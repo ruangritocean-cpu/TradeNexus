@@ -33,3 +33,12 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 .DS_Store
+
+# TradeNexus local data and scratch paths
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-shm
+data/*.sqlite-wal
+scratch/
+invalid_dir/
+invalid_path/
