@@ -70,23 +70,35 @@ def evaluate_mtf_hierarchy(
 
 def apply_regime_decision_rules(
     decision_state: str,
-    primary_regime: str,
-    flags: list,
-    confluence_score: float
-) -> tuple[str, list, list]:
+    primary_regime: str = "UNKNOWN",
+    flags: list[str] | None = None,
+    confluence_score: float = 0.0,
+) -> tuple[str, list[str], list[str]]:
     """
     Regime-Aware Decision Engine.
     
     Applies conditional overrides to decision state based on the current market regime.
     
     Returns:
-        tuple[str, list, list]: (final_decision_state, new_reasons, new_warnings)
+        tuple[str, list[str], list[str]]: (final_decision_state, new_reasons, new_warnings)
     """
     new_reasons = []
     new_warnings = []
     
     final_state = decision_state
     
+    # Normalize flags safely
+    if flags is None:
+        flags = []
+    elif isinstance(flags, str):
+        flags = [x.strip() for x in flags.split(",") if x.strip()]
+    else:
+        flags = list(flags)
+        
+    # Ensure primary_regime is normalized
+    if not primary_regime:
+        primary_regime = "UNKNOWN"
+        
     # 1. Sideways Filter: block weak trend entries
     if primary_regime == "SIDEWAYS" and decision_state == "ENTRY TRIGGERED":
         if confluence_score < 80.0:

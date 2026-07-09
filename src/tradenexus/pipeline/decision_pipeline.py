@@ -91,15 +91,20 @@ def evaluate_decision_and_scoring(
             decision_state = "WATCH"
             
     # 5. Apply Regime-Aware overrides
-    primary_regime = target_row.get("primary_regime", "UNKNOWN")
-    regime_flags_str = target_row.get("regime_flags", "")
-    regime_flags = regime_flags_str.split(",") if regime_flags_str else []
-    
+    primary_regime = target_row.get("primary_regime") or "UNKNOWN"
+    regime_flags_str = target_row.get("regime_flags") or ""
+    if isinstance(regime_flags_str, str):
+        regime_flags = [x.strip() for x in regime_flags_str.split(",") if x.strip()]
+    elif isinstance(regime_flags_str, list):
+        regime_flags = list(regime_flags_str)
+    else:
+        regime_flags = []
+        
     final_state, regime_reasons, regime_warnings = apply_regime_decision_rules(
         decision_state=decision_state,
         primary_regime=primary_regime,
         flags=regime_flags,
-        direction=direction
+        confluence_score=score_res.get("confluence_score", 0.0)
     )
     
     all_reasons = score_res["reasons"] + mtf_res["reasons"] + regime_reasons

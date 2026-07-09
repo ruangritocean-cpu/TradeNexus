@@ -71,15 +71,32 @@ def render_technical_tab(ticker: str, tf_dfs: dict, tf_warnings: dict):
     latest_1d_dict = tf_dfs["1d"].iloc[-1].to_dict() if not tf_dfs["1d"].empty else {}
     
     # Run unified pipeline for scoring and decision state
-    dec_res = evaluate_decision_and_scoring(
-        latest_15m=latest_15m_dict,
-        latest_1h=latest_1h_dict,
-        latest_4h=latest_4h_dict,
-        latest_1d=latest_1d_dict,
-        timeframe=selected_tf,
-        min_confluence_score=70.0,
-        min_rr=1.5
-    )
+    try:
+        dec_res = evaluate_decision_and_scoring(
+            latest_15m=latest_15m_dict,
+            latest_1h=latest_1h_dict,
+            latest_4h=latest_4h_dict,
+            latest_1d=latest_1d_dict,
+            timeframe=selected_tf,
+            min_confluence_score=70.0,
+            min_rr=1.5
+        )
+    except Exception as exc:
+        st.error("⚠️ ระบบวิเคราะห์การตัดสินใจสอดคล้องขัดข้องชั่วคราว (Decision Pipeline failed). หน้ากราฟราคาหลักและอินดิเคเตอร์ยังสามารถทำงานได้ตามปกติ")
+        logger.error(f"decision_pipeline_failed: symbol={ticker}, timeframe={selected_tf}, error={str(exc)}")
+        dec_res = {
+            "decision_state": "NO TRADE",
+            "direction": "NEUTRAL",
+            "alignment_type": "CONFLICTED",
+            "confluence_score": 0.0,
+            "directional_score": 0.0,
+            "quality_score": 0.0,
+            "reasons": [],
+            "warnings": [f"Pipeline computation error: {str(exc)}"],
+            "rr_tp1": 0.0,
+            "primary_regime": "UNKNOWN",
+            "regime_flags": []
+        }
     
     decision_state = dec_res["decision_state"]
     base_dec = dec_res["direction"]

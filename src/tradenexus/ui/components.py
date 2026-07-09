@@ -220,32 +220,37 @@ def render_trading_strategy_panel(strategy: dict):
     fvg = strategy.get("FVG", 0)
     liq = strategy.get("LiquiditySweep", 0)
 
-    # Set background and border colors based on Decision State
+    # Construct state titles and direction displays
     if decision == "ENTRY TRIGGERED":
         bg_color = "#064E3B"      # Solid Forest Green
         border_color = "#34D399"  # Bright Emerald
         badge_color = "#34D399"
         state_title = "💥 ENTRY TRIGGERED"
+        direction_display = f"{direction} Direction"
     elif decision == "READY":
         bg_color = "#1E3A8A"      # Deep Royal Blue
         border_color = "#60A5FA"  # Bright Blue
         badge_color = "#60A5FA"
         state_title = "⚡ READY TO ENTER"
+        direction_display = f"{direction} Direction"
     elif decision == "WATCH":
         bg_color = "#78350F"      # Dark Amber / Brown
         border_color = "#FBBF24"  # Gold
         badge_color = "#FBBF24"
-        state_title = "👀 WATCHLIST"
+        state_title = "👀 WATCH"
+        direction_display = f"Technical Bias: {direction}"
     elif decision == "MANAGE TRADE":
         bg_color = "#4C1D95"      # Dark Purple
         border_color = "#A78BFA"  # Lavender
         badge_color = "#A78BFA"
         state_title = "🛡️ MANAGE ACTIVE TRADE"
+        direction_display = f"{direction} Direction"
     else: # NO TRADE
         bg_color = "#1F2937"      # Solid Charcoal Grey
         border_color = "#4B5563"  # Cool Grey
         badge_color = "#9CA3AF"
         state_title = "🚫 NO TRADE"
+        direction_display = f"Technical Bias: {direction}"
 
     # Alignment type badges
     align_color = "#38BDF8" if alignment_type == "TREND_FOLLOWING" else ("#F43F5E" if alignment_type == "COUNTER_TREND_SCALP" else "#9CA3AF")
@@ -367,7 +372,7 @@ def render_trading_strategy_panel(strategy: dict):
             <div>
                 <span class="decision-state-badge">{state_title}</span>
                 <span style="margin-left: 10px; font-weight: 700; font-size: 1.1rem; color: #F3F4F6;">
-                    {direction} Direction
+                    {direction_display}
                 </span>
             </div>
             <div>
