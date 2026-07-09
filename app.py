@@ -12,3 +12,5 @@ from tradenexus.ui.dashboard import run_dashboard
 
 if __name__ == "__main__":
     run_dashboard()
+
+# Trigger Streamlit Cloud hot-reload and module cache refresh: 2026-07-09 12:40
