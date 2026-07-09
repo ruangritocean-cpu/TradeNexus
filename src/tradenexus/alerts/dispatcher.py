@@ -94,7 +94,7 @@ def dispatch_alert(
     Returns:
         dict: Status of each provider {"discord": bool, "telegram": bool}
     """
-    results = {"discord": False, "telegram": False}
+    results = {"discord": "NOT_CONFIGURED", "telegram": "NOT_CONFIGURED"}
     alert_msg = format_alert_message(ticker, timeframe, strategy)
     
     # 1. Discord Dispatch
@@ -103,23 +103,29 @@ def dispatch_alert(
         # Check if already sent
         if check_alert_exists(signal_id, provider, db_path):
             logger.info(f"Discord alert already exists for signal {signal_id}. Skipping.")
-            results["discord"] = True
+            results["discord"] = "SKIPPED_DUPLICATE"
         else:
-            sent = send_discord_webhook(discord_webhook_url, alert_msg)
-            if sent:
+            success, err_msg = send_discord_webhook(discord_webhook_url, alert_msg)
+            if success:
                 insert_alert_log(signal_id, provider, "SENT", db_path=db_path)
-                results["discord"] = True
+                results["discord"] = "SENT"
+            else:
+                logger.error(f"Failed to dispatch Discord alert: {err_msg}")
+                results["discord"] = "FAILED"
                 
     # 2. Telegram Dispatch
     if tg_bot_token and tg_chat_id:
         provider = "telegram"
         if check_alert_exists(signal_id, provider, db_path):
             logger.info(f"Telegram alert already exists for signal {signal_id}. Skipping.")
-            results["telegram"] = True
+            results["telegram"] = "SKIPPED_DUPLICATE"
         else:
-            sent = send_telegram_message(tg_bot_token, tg_chat_id, alert_msg)
-            if sent:
+            success, err_msg = send_telegram_message(tg_bot_token, tg_chat_id, alert_msg)
+            if success:
                 insert_alert_log(signal_id, provider, "SENT", db_path=db_path)
-                results["telegram"] = True
+                results["telegram"] = "SENT"
+            else:
+                logger.error(f"Failed to dispatch Telegram alert: {err_msg}")
+                results["telegram"] = "FAILED"
                 
     return results

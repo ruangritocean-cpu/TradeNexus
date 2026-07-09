@@ -428,7 +428,7 @@ def run_watchlist_scan(
                 }
                 
                 # Dispatch alerts (will dedup via alert_log table check internally)
-                sent = dispatch_alert(
+                dispatch_res = dispatch_alert(
                     signal_id=sig_id or f"manual_{uuid.uuid4().hex[:8]}",
                     ticker=symbol,
                     timeframe=tf,
@@ -438,7 +438,25 @@ def run_watchlist_scan(
                     tg_chat_id=tg_chat_id,
                     db_path=db_path
                 )
-                alert_status = "SENT" if sent else "SKIPPED_DUPLICATE"
+                
+                d_status = dispatch_res.get("discord", "NOT_CONFIGURED")
+                t_status = dispatch_res.get("telegram", "NOT_CONFIGURED")
+                
+                if d_status == "NOT_CONFIGURED" and t_status == "NOT_CONFIGURED":
+                    alert_status = "SKIPPED_NO_PROVIDER"
+                elif d_status == "SENT" and t_status == "SENT":
+                    alert_status = "SENT"
+                elif d_status in ["SENT", "SKIPPED_DUPLICATE"] and t_status in ["SENT", "SKIPPED_DUPLICATE"]:
+                    if d_status == "SKIPPED_DUPLICATE" or t_status == "SKIPPED_DUPLICATE":
+                        alert_status = "SKIPPED_DUPLICATE"
+                    else:
+                        alert_status = "SENT"
+                elif d_status == "SENT" or t_status == "SENT":
+                    alert_status = "PARTIAL_SENT"
+                elif d_status == "FAILED" or t_status == "FAILED":
+                    alert_status = "FAILED_PROVIDER"
+                else:
+                    alert_status = "SKIPPED_DUPLICATE"
                 
             results.append(ScanResult(
                 scan_run_id=scan_run_id,

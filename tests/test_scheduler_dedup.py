@@ -87,9 +87,9 @@ def test_alert_deduplication(mock_tg):
         tg_chat_id="chat_123",
         db_path=TEST_DB
     )
-    assert res1["telegram"] is True
+    assert res1["telegram"] == "SENT"
     
-    # Dispatch second time -> should skip telegram send and return True (cached success)
+    # Dispatch second time -> should skip telegram send and return SKIPPED_DUPLICATE
     # mock_tg should not be called again
     mock_tg.reset_mock()
     res2 = dispatch_alert(
@@ -101,5 +101,5 @@ def test_alert_deduplication(mock_tg):
         tg_chat_id="chat_123",
         db_path=TEST_DB
     )
-    assert res2["telegram"] is True
+    assert res2["telegram"] == "SKIPPED_DUPLICATE"
     mock_tg.assert_not_called()

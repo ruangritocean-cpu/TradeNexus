@@ -64,6 +64,6 @@ def test_alert_deduplication():
         db_path=TEST_DB_PATH
     )
     
-    # Since discord exists, dispatcher skips and returns True (skipped count as True/handled)
-    assert res["discord"]
-    assert not res["telegram"] # None token skips entirely
+    # Since discord exists, dispatcher skips and returns SKIPPED_DUPLICATE
+    assert res["discord"] == "SKIPPED_DUPLICATE"
+    assert res["telegram"] == "NOT_CONFIGURED" # None token skips entirely
