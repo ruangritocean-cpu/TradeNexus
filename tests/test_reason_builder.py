@@ -19,13 +19,13 @@ def test_reason_builder_trend_following():
     }
     
     reasons = build_reasons(data)
-    assert any("Trend hierarchy is aligned" in r for r in reasons)
-    assert any("Confluence score of 85" in r for r in reasons)
-    assert any("regime classified as TRENDING_UP" in r for r in reasons)
-    assert any("VWAP position is BULLISH" in r for r in reasons)
+    assert any("โครงสร้างแนวโน้มหลักสอดคล้องตรงกัน" in r for r in reasons)
+    assert any("Confluence Score อยู่ที่ 85" in r for r in reasons)
+    assert any("จัดอยู่ในประเภท: แนวโน้มขาขึ้น (TRENDING UP)" in r for r in reasons)
+    assert any("อยู่เหนือเส้น VWAP (Bullish)" in r for r in reasons)
     assert any("BOS" in r for r in reasons)
     assert any("FVG" in r for r in reasons)
-    assert any("Risk/Reward ratio of 2.10" in r for r in reasons)
+    assert any("Risk/Reward Ratio) อยู่ที่ 2.10" in r for r in reasons)
 
 def test_reason_builder_conflicted():
     data = {
@@ -37,6 +37,5 @@ def test_reason_builder_conflicted():
     }
     
     reasons = build_reasons(data)
-    assert any("Conflicted trend alignment" in r for r in reasons)
-    assert any("confluence_score" not in r for r in reasons) # lowercase or check specific text
-    assert any("Confluence score of 45" in r for r in reasons)
+    assert any("แนวโน้มขัดแย้งกันในแต่ละกรอบเวลาหลัก" in r for r in reasons)
+    assert any("Confluence Score อยู่ที่ 45" in r for r in reasons)

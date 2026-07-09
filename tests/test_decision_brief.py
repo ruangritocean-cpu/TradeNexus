@@ -50,9 +50,9 @@ def test_decision_brief_generation_entry_triggered():
     assert brief.direction == "BUY"
     assert brief.risk_plan is not None
     assert brief.risk_plan.position_size == 100.0  # $1,000 risk / $10 risk per unit = 100 units
-    assert "EXECUTE TRIGGERED ENTRY" in brief.next_action
-    assert any("Trend hierarchy is aligned" in r for r in brief.reasons)
-    assert any("Stop Loss Breach" in c.condition for c in brief.invalidation_conditions)
+    assert "เปิดออเดอร์ (EXECUTE)" in brief.next_action
+    assert any("โครงสร้างแนวโน้มหลักสอดคล้องตรงกัน" in r for r in brief.reasons)
+    assert any("จุดตัดขาดทุนถูกทำลาย" in c.condition for c in brief.invalidation_conditions)
 
 def test_decision_brief_blocked_by_portfolio():
     # Set max open risk to 0% to force BLOCKED status
@@ -81,5 +81,5 @@ def test_decision_brief_blocked_by_portfolio():
     # Technical state remains ENTRY TRIGGERED
     assert brief.decision_state == "ENTRY TRIGGERED"
     # Action is blocked
-    assert "ALERT BLOCKED" in brief.next_action
-    assert any("Portfolio Risk Block" in c.condition for c in brief.invalidation_conditions)
+    assert "ระงับออเดอร์ (ALERT BLOCKED)" in brief.next_action
+    assert any("บล็อกความเสี่ยงพอร์ต" in c.condition for c in brief.invalidation_conditions)

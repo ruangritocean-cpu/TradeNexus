@@ -32,12 +32,12 @@ def test_template_formatters():
     compact_text = format_compact_brief(brief)
     lines = compact_text.split("\n")
     assert len(lines) == 5
-    assert "Asset: BTC-USD" in lines[0]
-    assert "Direction: BUY" in lines[1]
+    assert "BTC-USD" in lines[0]
+    assert "BUY" in lines[1]
     
     # 2. Alert format check
     alert_text = format_alert_brief(brief)
-    assert "TradeNexus Alert" in alert_text
+    assert "แจ้งเตือน TradeNexus" in alert_text
     assert "BTC-USD" in alert_text
     
     # 3. Scan card format check

@@ -38,7 +38,7 @@ def test_regime_scoring_modifiers():
     high_vol_data["regime_flags"] = "HIGH_VOLATILITY"
     score_high_vol = calculate_confluence_score(high_vol_data)
     assert score_high_vol["quality_score"] < score_trending["quality_score"]
-    assert any("volatility" in w.lower() for w in score_high_vol["warnings"])
+    assert any("ความผันผวน" in w for w in score_high_vol["warnings"])
     
     # 4. Modify SMC source to FALLBACK -> score should drop
     fallback_data = base_data.copy()

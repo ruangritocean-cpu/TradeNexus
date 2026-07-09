@@ -122,18 +122,19 @@ def generate_decision_brief(
     invalidation = generate_invalidation_conditions(data_for_reasons)
     
     # Headline & summary
-    headline = f"{direction} trade setup triggered for {symbol}"
-    summary = f"{direction} trend alignment confirmed on {tf} timeframe with {conf_score:.0f}% confluence."
+    dir_th = "ซื้อ (BUY)" if direction == "BUY" else ("ขาย (SELL)" if direction == "SELL" else "เป็นกลาง (NEUTRAL)")
+    headline = f"เกิดสัญญาณเทรดฝั่ง {dir_th} สำหรับ {symbol}"
+    summary = f"ยืนยันแนวโน้มฝั่ง {dir_th} ในกรอบเวลา {tf} ด้วยความสอดคล้อง (Confluence) {conf_score:.0f}%"
     
     # Next Action
-    next_action = "Monitor setup for confirmation."
+    next_action = "เฝ้าระวังและรอการยืนยันสัญญาณเพิ่มเติม"
     if state == "ENTRY TRIGGERED":
         if p_status == "BLOCKED":
-            next_action = "ALERT BLOCKED. Do not execute due to portfolio risk breach."
+            next_action = "ระงับออเดอร์ (ALERT BLOCKED): ห้ามเทรดเนื่องจากความเสี่ยงพอร์ตโดยรวมเกินขีดจำกัดสูงสุด"
         else:
-            next_action = "EXECUTE TRIGGERED ENTRY. Confirm order matches target stop loss rules."
+            next_action = "เปิดออเดอร์ (EXECUTE): สามารถเข้าซื้อขายและตั้งค่าจำกัดความเสี่ยง (Stop Loss) ทันที"
     elif state == "READY":
-        next_action = "PREPARE ORDER. Set pending trigger above entry zone."
+        next_action = "เตรียมออเดอร์ (PREPARE): รอเปิดคำสั่งซื้อขายล่วงหน้า (Pending Order) เมื่อราคาถึงจุดเข้าเทรด"
         
     return DecisionBrief(
         symbol=symbol,

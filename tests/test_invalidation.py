@@ -12,11 +12,11 @@ def test_invalidation_buy():
     
     conds = generate_invalidation_conditions(data)
     assert len(conds) == 3
-    assert conds[0].condition == "Stop Loss Breach"
+    assert "Stop Loss Breach" in conds[0].condition
     assert conds[0].price_level == 95.0
-    assert conds[1].condition == "Swing Support Failure"
+    assert "Swing Support Failure" in conds[1].condition
     assert conds[1].price_level == 92.0
-    assert conds[2].condition == "Market Regime Shift"
+    assert "Market Regime Shift" in conds[2].condition
 
 def test_invalidation_sell_blocked():
     data = {
@@ -29,8 +29,8 @@ def test_invalidation_sell_blocked():
     
     conds = generate_invalidation_conditions(data)
     assert len(conds) == 4
-    assert conds[0].condition == "Stop Loss Breach"
+    assert "Stop Loss Breach" in conds[0].condition
     assert conds[0].price_level == 105.0
-    assert conds[1].condition == "Swing Resistance Failure"
+    assert "Swing Resistance Failure" in conds[1].condition
     assert conds[1].price_level == 108.0
-    assert conds[3].condition == "Portfolio Risk Block"
+    assert "Portfolio Risk Block" in conds[3].condition

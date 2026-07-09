@@ -9,13 +9,7 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     Computes directional alignment and setup quality based on indicators,
     market regime, volume flows, and risk parameters.
     
-    Weights (Quality Score 0-100):
-    - Trend agreement: 25 points
-    - Momentum strength: 15 points
-    - SMC structure: 20 points
-    - Market regime: 15 points
-    - Volume / VWAP confirmation: 10 points
-    - Risk/Reward quality: 15 points
+    All reasons and warnings are formatted in Thai for user-friendliness.
     """
     reasons = []
     warnings = []
@@ -30,31 +24,31 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     
     if cdc_trend == "Bullish":
         dir_score += 40.0
-        reasons.append("CDC ActionZone Bullish (+40)")
+        reasons.append("CDC ActionZone เป็นสัญญาณซื้อ Bullish (+40)")
     elif cdc_trend == "Bearish":
         dir_score -= 40.0
-        reasons.append("CDC ActionZone Bearish (-40)")
+        reasons.append("CDC ActionZone เป็นสัญญาณขาย Bearish (-40)")
         
     if supertrend_dir == "Bullish":
         dir_score += 40.0
-        reasons.append("SuperTrend Bullish (+40)")
+        reasons.append("SuperTrend เป็นแนวโน้มขาขึ้น Bullish (+40)")
     elif supertrend_dir == "Bearish":
         dir_score -= 40.0
-        reasons.append("SuperTrend Bearish (-40)")
+        reasons.append("SuperTrend เป็นแนวโน้มขาลง Bearish (-40)")
         
     if macd_trend == "Bullish":
         dir_score += 10.0
-        reasons.append("MACD Bullish (+10)")
+        reasons.append("MACD ทิศทางขาขึ้น Bullish (+10)")
     elif macd_trend == "Bearish":
         dir_score -= 10.0
-        reasons.append("MACD Bearish (-10)")
+        reasons.append("MACD ทิศทางขาลง Bearish (-10)")
         
     if kama_trend == "Bullish":
         dir_score += 10.0
-        reasons.append("KAMA Bullish (+10)")
+        reasons.append("KAMA/Adaptive Trend ขาขึ้น Bullish (+10)")
     elif kama_trend == "Bearish":
         dir_score -= 10.0
-        reasons.append("KAMA Bearish (-10)")
+        reasons.append("KAMA/Adaptive Trend ขาลง Bearish (-10)")
         
     is_bullish = dir_score > 0
     
@@ -64,19 +58,19 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     # A. Trend agreement (max 25 points)
     if cdc_trend == supertrend_dir and cdc_trend != "Neutral":
         q_score += 25.0
-        reasons.append("Daily and intermediate trends fully aligned (+25)")
+        reasons.append("แนวโน้มหลัก (1D) และแนวโน้มรอง (4H) สอดคล้องเต็มรูปแบบ (+25)")
     elif cdc_trend != "Neutral" or supertrend_dir != "Neutral":
         q_score += 12.5
-        reasons.append("Partial trend alignment (+12.5)")
+        reasons.append("แนวโน้มสอดคล้องบางส่วน (+12.5)")
         
     # B. Momentum strength (max 15 points)
     adx = latest_data.get("ADX", 20.0)
     if adx >= 25:
         q_score += 15.0
-        reasons.append(f"Strong ADX trend strength ({adx:.1f} >= 25) (+15)")
+        reasons.append(f"แนวโน้มมีกำลังสูงมาก ADX ({adx:.1f} >= 25) (+15)")
     elif adx < 20:
         q_score += 5.0
-        warnings.append(f"Weak ADX trend strength ({adx:.1f} < 20) (-10)")
+        warnings.append(f"แนวโน้มไม่มีกำลัง ADX อ่อนแรง ({adx:.1f} < 20) (-10)")
     else:
         q_score += 10.0
         
@@ -87,10 +81,10 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     
     if relevant_src == "CONFIRMED_SWING":
         q_score += 15.0
-        reasons.append("Using confirmed swing S/R levels (+15)")
+        reasons.append("ใช้ระดับแนวรับ/แนวต้าน Swing ระดับที่คอนเฟิร์มแล้ว (+15)")
     else:
         q_score += 5.0
-        warnings.append("Using fallback S/R levels (-10)")
+        warnings.append("ใช้ระดับแนวรับ/แนวต้านสำรอง (Fallback S/R) (-10)")
         
     # Check for active structures (BOS, CHOCH, FVG)
     bos = latest_data.get("BOS_Present", 0)
@@ -99,28 +93,38 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     
     if bos or choch or fvg:
         q_score += 5.0
-        reasons.append("Supporting structural break / gap active (+5)")
+        reasons.append("มีโครงสร้างราคาเบรกเอาต์สนับสนุน / FVG ทำงาน (+5)")
         
     # D. Market Regime (max 15 points)
     regime = latest_data.get("primary_regime", "UNKNOWN")
     regime_score = latest_data.get("regime_score", 50.0)
     regime_flags = latest_data.get("regime_flags", "")
     
+    regime_dict = {
+        "TRENDING_UP": "แนวโน้มขาขึ้น (TRENDING UP)",
+        "TRENDING_DOWN": "แนวโน้มขาลง (TRENDING DOWN)",
+        "SIDEWAYS": "ออกข้างไซด์เวย์ (SIDEWAYS)",
+        "SQUEEZE": "ตลาดบีบตัวแคบ (SQUEEZE)",
+        "EXPANSION": "ราคาขยายตัวรวดเร็ว (EXPANSION)",
+        "UNKNOWN": "ไม่สามารถระบุสถานะ (UNKNOWN)"
+    }
+    regime_desc = regime_dict.get(regime, regime)
+    
     if regime in ["TRENDING_UP", "TRENDING_DOWN", "EXPANSION"]:
         q_score += 15.0
-        reasons.append(f"Market regime supports active strategy ({regime}) (+15)")
+        reasons.append(f"สภาวะตลาดเกื้อหนุนกลยุทธ์ปัจจุบัน ({regime_desc}) (+15)")
     elif regime in ["SIDEWAYS", "SQUEEZE"]:
         q_score += 5.0
-        warnings.append(f"Market is sideways/squeezed ({regime}) - entry quality reduced (-10)")
+        warnings.append(f"ตลาดออกข้าง/บีบตัว ({regime_desc}) - คุณภาพจุดเข้าลดลง (-10)")
     else:
         q_score += 10.0
         
     if "HIGH_VOLATILITY" in regime_flags:
         q_score -= 5.0
-        warnings.append("High volatility flag active - increased stop risk (-5)")
+        warnings.append("ความผันผวนสูงมาก - เพิ่มความเสี่ยงจุดตัดขาดทุน (-5)")
     if "LOW_LIQUIDITY" in regime_flags:
         q_score -= 10.0
-        warnings.append("Low liquidity flag active - increased slippage risk (-10)")
+        warnings.append("สภาพคล่องต่ำ - เพิ่มความเสี่ยงในการคลาดเคลื่อนของราคา (Slippage) (-10)")
         
     # E. Volume / VWAP Confirmation (max 10 points)
     has_vol_warning = (latest_data.get("Volume_Warning", "") != "")
@@ -134,17 +138,17 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     
     if has_vol_warning:
         q_score += 5.0  # Neutral contribution
-        warnings.append("Volume indicators neutral (data unavailable/unreliable)")
+        warnings.append("ตัวชี้วัดวอลลุ่มแสดงสถานะเป็นกลาง (ข้อมูลไม่พร้อมใช้งาน/ไม่เสถียร)")
     else:
         # VWAP alignment (5 points)
         if (is_bullish and vwap_bull) or (not is_bullish and vwap_bear):
             q_score += 5.0
-            reasons.append("Price aligned with VWAP trend (+5)")
+            reasons.append("ราคาอยู่ในตำแหน่งสอดคล้องกับแนวโน้มของ VWAP (+5)")
             
         # Volume Flow Confirmation (5 points)
         if (is_bullish and vol_conf == "BULLISH") or (not is_bullish and vol_conf == "BEARISH"):
             q_score += 5.0
-            reasons.append("Volume flow confirms breakout direction (+5)")
+            reasons.append("ทิศทางของวอลลุ่มช่วยยืนยันการเบรกเอาต์ (+5)")
         else:
             q_score += 2.0
             
@@ -152,13 +156,12 @@ def calculate_confluence_score(latest_data: dict) -> dict:
     rr_tp1 = latest_data.get("RR_TP1", 0.0)
     if rr_tp1 >= 1.5:
         q_score += 15.0
-        reasons.append(f"High risk-to-reward ratio ({rr_tp1:.2f} >= 1.5) (+15)")
+        reasons.append(f"อัตราผลตอบแทนต่อความเสี่ยงสูงดีเยี่ยม ({rr_tp1:.2f} >= 1.5) (+15)")
     else:
         q_score += 0.0
-        warnings.append(f"Suboptimal risk-to-reward ratio ({rr_tp1:.2f} < 1.5)")
+        warnings.append(f"อัตราผลตอบแทนต่อความเสี่ยงต่ำกว่าเกณฑ์ขั้นต่ำ ({rr_tp1:.2f} < 1.5)")
         
     # 3. Combine into Confluence Score (0 to 100)
-    # We define confluence score as 50% directional strength + 50% setup quality
     conf_score = (abs(dir_score) * 0.5) + (q_score * 0.5)
     
     # Safe bounds
