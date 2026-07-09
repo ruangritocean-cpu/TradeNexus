@@ -51,7 +51,7 @@ def init_db(db_path: str = None):
             current_version = 4
             
         # Write tables
-        with conn:
+        try:
             # 1. db_metadata
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS db_metadata (
@@ -268,6 +268,21 @@ def init_db(db_path: str = None):
             
             # Save version to db_metadata
             conn.execute("INSERT OR REPLACE INTO db_metadata (key, value) VALUES ('schema_version', ?);", (str(current_version),))
+            conn.commit()
+            
+            # Post-creation schema validation
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            existing_tables = [r["name"] for r in cursor.fetchall()]
+            logger.info(f"Initialized database tables successfully: {existing_tables}")
+            
+            # Verification check
+            if "portfolio_settings" not in existing_tables:
+                logger.critical("CRITICAL: portfolio_settings table was NOT created after explicit commit!")
+                
+        except Exception as table_err:
+            logger.error(f"Error creating database tables: {str(table_err)}")
+            conn.rollback()
+            raise table_err
             
         # Execute migration from version 1 to 2 if needed
         if current_version == 1:

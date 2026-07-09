@@ -436,9 +436,13 @@ def run_dashboard():
                     "resistance_level": resistance_val
                 }
                 
-                brief = generate_decision_brief(brief_data)
-                with st.expander("📖 Read Decision Explanation Brief", expanded=True):
-                    st.markdown(format_full_brief(brief))
+                try:
+                    brief = generate_decision_brief(brief_data)
+                    with st.expander("📖 Read Decision Explanation Brief", expanded=True):
+                        st.markdown(format_full_brief(brief))
+                except Exception as brief_err:
+                    st.warning(f"⚠️ ไม่สามารถสร้างสรุปการวิเคราะห์สอดคล้องได้ในขณะนี้เนื่องจากระบบฐานข้อมูลกำลังอัปเดต (ข้อผิดพลาด: {str(brief_err)})")
+                    logger.error(f"Failed to generate decision brief: {str(brief_err)}")
                 
                 # ----------------- ACTIVE POSITION UI CONTROLS -----------------
                 if decision_state == "MANAGE TRADE":

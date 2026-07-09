@@ -39,18 +39,33 @@ def is_candle_closed(
     if mode == "backtest":
         return True
         
-    # Ensure timezone alignment between now and candle_time
+    # Standardize both candle_time and now to timezone-naive UTC for comparison
     if hasattr(candle_time, "tzinfo") and candle_time.tzinfo is not None:
-        if now is None:
-            now = datetime.datetime.now(datetime.timezone.utc)
-        # Align now to candle_time timezone
-        now = now.astimezone(candle_time.tzinfo)
-    else:
-        if now is None:
-            now = datetime.datetime.now()
+        # Normalize to UTC and strip timezone info
+        if hasattr(candle_time, "to_pydatetime"):
+            candle_dt = candle_time.to_pydatetime()
+        else:
+            candle_dt = candle_time
             
+        candle_utc = candle_dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        
+        if now is None:
+            now_dt = datetime.datetime.now(datetime.timezone.utc)
+        else:
+            now_dt = now.astimezone(datetime.timezone.utc)
+        now_utc = now_dt.replace(tzinfo=None)
+    else:
+        # Both naive
+        candle_utc = candle_time
+        if now is None:
+            now_utc = datetime.datetime.now()
+        else:
+            now_utc = now
+            if now_utc.tzinfo is not None:
+                now_utc = now_utc.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                
     delta = parse_timeframe_delta(timeframe)
-    close_time = candle_time + delta
+    close_time = candle_utc + delta
     
-    # If current time is past the candle's close time, it is closed
-    return now >= close_time
+    # Compare naive UTC times
+    return now_utc >= close_time
