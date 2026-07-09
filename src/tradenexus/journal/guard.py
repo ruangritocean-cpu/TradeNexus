@@ -1,5 +1,6 @@
 import datetime
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def parse_timeframe_delta(timeframe: str) -> datetime.timedelta:
 def is_candle_closed(
     candle_time: datetime.datetime, 
     timeframe: str, 
-    now: datetime.datetime = None, 
+    now: Optional[datetime.datetime] = None, 
     mode: str = "live"
 ) -> bool:
     """
@@ -38,9 +39,16 @@ def is_candle_closed(
     if mode == "backtest":
         return True
         
-    if now is None:
-        now = datetime.datetime.now()
-        
+    # Ensure timezone alignment between now and candle_time
+    if hasattr(candle_time, "tzinfo") and candle_time.tzinfo is not None:
+        if now is None:
+            now = datetime.datetime.now(datetime.timezone.utc)
+        # Align now to candle_time timezone
+        now = now.astimezone(candle_time.tzinfo)
+    else:
+        if now is None:
+            now = datetime.datetime.now()
+            
     delta = parse_timeframe_delta(timeframe)
     close_time = candle_time + delta
     
