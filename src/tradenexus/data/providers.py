@@ -1,16 +1,14 @@
 import yfinance as yf
 import pandas as pd
 import logging
+from tradenexus.data.cache import global_cache, get_interval_ttl
 
 logger = logging.getLogger(__name__)
 
 def fetch_ohlcv_data(ticker: str, interval: str = "15m", period: str = None) -> tuple[pd.DataFrame, str]:
     """
     Fetches native OHLCV data from Yahoo Finance for a given ticker and interval.
-    Respects yfinance limits on historical periods for intraday data:
-    - 15m: max 60 days
-    - 1h: max 730 days
-    - 1d: max 10 years (or more)
+    Uses TTLCache to prevent repeated requests during rerun cycles.
     
     Args:
         ticker (str): The financial instrument symbol (e.g., BTC-USD, AAPL).
@@ -30,6 +28,12 @@ def fetch_ohlcv_data(ticker: str, interval: str = "15m", period: str = None) -> 
     if not period:
         period = interval_period_map.get(interval, "60d")
         
+    cache_key = f"ohlcv_{ticker}_{interval}_{period}"
+    cached_val = global_cache.get(cache_key)
+    if cached_val is not None:
+        logger.debug(f"Retrieved cached OHLCV data for {ticker} ({interval}, {period})")
+        return cached_val[0].copy(), cached_val[1]
+        
     logger.info(f"Fetching native {ticker} data with interval={interval}, period={period}")
     warning_msg = ""
     
@@ -44,7 +48,9 @@ def fetch_ohlcv_data(ticker: str, interval: str = "15m", period: str = None) -> 
         
         if df.empty:
             logger.warning(f"No data returned for ticker {ticker} with interval {interval}.")
-            return pd.DataFrame(), f"No data returned for ticker {ticker} with interval {interval}."
+            res = (pd.DataFrame(), f"No data returned for ticker {ticker} with interval {interval}.")
+            global_cache.set(cache_key, res, get_interval_ttl(interval))
+            return res
             
         # Clean column names (yfinance can return MultiIndex columns in newer versions)
         if isinstance(df.columns, pd.MultiIndex):
@@ -75,7 +81,9 @@ def fetch_ohlcv_data(ticker: str, interval: str = "15m", period: str = None) -> 
             logger.warning(f"Quality Check Warning for {ticker} ({interval}): {warning_msg}")
             
         logger.info(f"Successfully fetched {len(df)} rows for {ticker} ({interval}).")
-        return df, warning_msg
+        res = (df, warning_msg)
+        global_cache.set(cache_key, res, get_interval_ttl(interval))
+        return df.copy(), warning_msg
         
     except Exception as e:
         err_msg = f"Error fetching data for ticker {ticker}: {str(e)}"

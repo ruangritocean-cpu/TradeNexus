@@ -55,8 +55,9 @@ def insert_scan_result(result: ScanResult, db_path: str = None) -> bool:
                     scan_run_id, signal_id, symbol, timeframe, scan_time, symbol_status,
                     decision_state, direction, alignment_type, confluence_score, rr_tp1,
                     primary_regime, regime_flags_json, data_quality_status, alert_status,
-                    journal_status, reasons_json, warnings_json, error_message, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    journal_status, reasons_json, warnings_json, error_message, created_at,
+                    position_size_units, candidate_risk_amount, candidate_risk_pct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.scan_run_id,
@@ -78,7 +79,10 @@ def insert_scan_result(result: ScanResult, db_path: str = None) -> bool:
                     result.reasons_json,
                     result.warnings_json,
                     result.error_message,
-                    result.created_at
+                    result.created_at,
+                    result.position_size_units,
+                    result.candidate_risk_amount,
+                    result.candidate_risk_pct
                 )
             )
         return True
@@ -143,7 +147,10 @@ def load_scan_results_for_run(scan_run_id: str, db_path: str = None) -> List[Sca
                 warnings_json=r["warnings_json"],
                 error_message=r["error_message"],
                 created_at=r["created_at"],
-                id=r["id"]
+                id=r["id"],
+                position_size_units=_get_row_val(r, "position_size_units", 0.0),
+                candidate_risk_amount=_get_row_val(r, "candidate_risk_amount", 0.0),
+                candidate_risk_pct=_get_row_val(r, "candidate_risk_pct", 0.0)
             ))
     except Exception as e:
         logger.error(f"Error loading scan results for run: {str(e)}")
@@ -180,7 +187,10 @@ def load_scan_results_paginated(limit: int = 50, offset: int = 0, db_path: str =
                 warnings_json=r["warnings_json"],
                 error_message=r["error_message"],
                 created_at=r["created_at"],
-                id=r["id"]
+                id=r["id"],
+                position_size_units=_get_row_val(r, "position_size_units", 0.0),
+                candidate_risk_amount=_get_row_val(r, "candidate_risk_amount", 0.0),
+                candidate_risk_pct=_get_row_val(r, "candidate_risk_pct", 0.0)
             ))
     except Exception as e:
         logger.error(f"Error loading paginated scan results: {str(e)}")

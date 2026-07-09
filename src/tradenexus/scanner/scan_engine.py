@@ -6,30 +6,22 @@ from typing import List, Dict, Any, Tuple
 import uuid
 import json
 
-# Data and Indicators
+# Data and Indicators (Pipelines & Cache & Providers)
 from tradenexus.data.providers import fetch_ohlcv_data
 from tradenexus.data.resampling import resample_timeframe
-from tradenexus.indicators.trend import calculate_cdc_actionzone, calculate_adaptive_trend
-from tradenexus.indicators.momentum import calculate_macd, calculate_adx
-from tradenexus.indicators.volatility import calculate_bollinger_bands
-from tradenexus.indicators.smc import calculate_smc_lite
-from indicators import calculate_mcdx_proxy
-from tradenexus.indicators.volume import calculate_volume_indicators
-from tradenexus.indicators.structure import calculate_smc_structures
-from tradenexus.indicators.liquidity import calculate_liquidity_zones
-from tradenexus.regime.classifier import classify_market_regime
+from tradenexus.pipeline.indicator_pipeline import calculate_all_indicators
 
 # Rules & Vetoes
 from tradenexus.signals.scoring import calculate_confluence_score
 from tradenexus.signals.rules import evaluate_mtf_hierarchy, apply_regime_decision_rules
 from tradenexus.signals.risk import validate_trade_risk
 from tradenexus.journal.guard import is_candle_closed
-from tradenexus.journal.repository import insert_signal, generate_signal_id, load_signals
+from tradenexus.journal.repository import insert_signal, generate_signal_id
 from tradenexus.journal.models import Signal
 from tradenexus.alerts.dispatcher import dispatch_alert
 from tradenexus.scanner.watchlist import load_watchlist
 from tradenexus.scanner.scan_models import ScanResult, ScanRun
-from tradenexus.scanner.scan_repository import insert_scan_run, insert_scan_result
+from tradenexus.scanner.scan_repository import insert_scan_run
 
 # Portfolio Integration
 from tradenexus.portfolio.portfolio_repository import load_portfolio_settings, load_symbol_profile, insert_risk_event
@@ -52,9 +44,10 @@ def run_watchlist_scan(
 ) -> dict:
     """
     Sequentially scans enabled symbols in the watchlist.
-    Integrates Portfolio Risk management (limits, sizing, event logs).
+    Integrates Portfolio Risk management (limits, sizing, event logs) and shared pipelines.
     """
-    scan_run_id = f"scan_{int(datetime.datetime.now(datetime.timezone.utc).timestamp())}"
+    # Precision UUID run ID
+    scan_run_id = f"scan_{uuid.uuid4().hex[:8]}"
     started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     
     # Load settings and current exposure
@@ -95,7 +88,7 @@ def run_watchlist_scan(
         symbol_has_error = False
         symbol_has_warning = False
         
-        # Fetch base timeframes required for MTF
+        # 1. Fetch and resample MTF data using fetch_ohlcv_data
         try:
             df_15m, w_15m = fetch_ohlcv_data(symbol, interval="15m")
             df_1h, w_1h = fetch_ohlcv_data(symbol, interval="1h")
@@ -113,39 +106,10 @@ def run_watchlist_scan(
                 "1d": df_1d
             }
             
-            # Compute indicators for all timeframes
+            # Compute indicators for all timeframes via shared indicator pipeline
             for tf in ["15m", "1h", "4h", "1d"]:
-                df_tf = tf_dfs[tf]
-                if not df_tf.empty:
-                    df_tf = calculate_cdc_actionzone(df_tf)
-                    df_tf = calculate_macd(df_tf)
-                    df_tf = calculate_smc_lite(df_tf)
-                    df_tf = calculate_mcdx_proxy(df_tf)
-                    df_tf = calculate_adaptive_trend(df_tf)
-                    df_tf = calculate_bollinger_bands(df_tf)
-                    df_tf = calculate_adx(df_tf)
-                    df_tf = calculate_volume_indicators(df_tf)
-                    df_tf = calculate_smc_structures(df_tf)
-                    df_tf = calculate_liquidity_zones(df_tf)
-                    
-                    # Rolling regime classifier - optimized for last 5 rows
-                    primary_regimes = ["UNKNOWN"] * len(df_tf)
-                    regime_scores = [0.0] * len(df_tf)
-                    regime_flags_list = [""] * len(df_tf)
-                    
-                    start_idx = max(0, len(df_tf) - 5)
-                    for idx in range(start_idx, len(df_tf)):
-                        sub_df = df_tf.iloc[:idx+1]
-                        reg_res = classify_market_regime(sub_df)
-                        primary_regimes[idx] = reg_res["primary_regime"]
-                        regime_scores[idx] = reg_res["regime_score"]
-                        regime_flags_list[idx] = ",".join(reg_res["flags"])
-                        
-                    df_tf["primary_regime"] = primary_regimes
-                    df_tf["regime_score"] = regime_scores
-                    df_tf["regime_flags"] = regime_flags_list
-                    tf_dfs[tf] = df_tf
-                    
+                tf_dfs[tf] = calculate_all_indicators(tf_dfs[tf])
+                
         except Exception as ex:
             error_count += 1
             results.append(ScanResult(
@@ -181,7 +145,7 @@ def run_watchlist_scan(
                     symbol=symbol,
                     timeframe=tf,
                     scan_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    symbol_status="SKIPPED_DATA_QUALITY",
+                    symbol_status="SKIPPED_EMPTY_DATA",
                     decision_state="NO TRADE",
                     direction="NEUTRAL",
                     alignment_type="CONFLICTED",
@@ -190,11 +154,11 @@ def run_watchlist_scan(
                     primary_regime="UNKNOWN",
                     regime_flags_json="[]",
                     data_quality_status="INVALID",
-                    alert_status="SKIPPED_QUALITY",
-                    journal_status="SKIPPED_QUALITY",
+                    alert_status="SKIPPED_EMPTY",
+                    journal_status="SKIPPED_EMPTY",
                     reasons_json="[]",
                     warnings_json="[]",
-                    error_message="Insufficient data bars.",
+                    error_message="Historical data too short.",
                     created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
                 ))
                 continue
@@ -305,6 +269,12 @@ def run_watchlist_scan(
             sig_id = None
             
             is_actionable = 1 if c_state in ["READY", "ENTRY TRIGGERED"] else 0
+            
+            # Candidate Sizing Calculation
+            pos_size_units = 0.0
+            candidate_risk_amount = 0.0
+            candidate_risk_pct = 0.0
+            
             if is_actionable:
                 sig_id = generate_signal_id(
                     symbol=symbol,
@@ -316,6 +286,37 @@ def run_watchlist_scan(
                     sl=risk_res["StopLoss"],
                     tp1=risk_res["TakeProfit1"]
                 )
+                
+                # Load symbol profile and perform sizing calculations
+                sym_profile = load_symbol_profile(symbol, db_path)
+                if sym_profile is None:
+                    from tradenexus.portfolio.risk_models import SymbolRiskProfile
+                    sym_profile = SymbolRiskProfile(
+                        symbol=symbol,
+                        asset_class="CRYPTO",
+                        point_value=1.0,
+                        contract_multiplier=1.0,
+                        min_position_size=0.01,
+                        position_step=0.01,
+                        currency="USD",
+                        updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    )
+                sizing_res = calculate_position_size(
+                    account_equity=p_settings.account_equity,
+                    risk_per_trade_pct=p_settings.risk_per_trade_pct,
+                    entry=risk_res["Entry"],
+                    stop_loss=risk_res["StopLoss"],
+                    direction=direction,
+                    point_value=sym_profile.point_value,
+                    contract_multiplier=sym_profile.contract_multiplier,
+                    min_position_size=sym_profile.min_position_size,
+                    position_step=sym_profile.position_step,
+                    tp1=risk_res["TakeProfit1"],
+                    tp2=risk_res["TakeProfit2"]
+                )
+                pos_size_units = sizing_res.position_size_units
+                candidate_risk_amount = sizing_res.risk_amount
+                candidate_risk_pct = (sizing_res.risk_amount / p_settings.account_equity * 100.0) if p_settings.account_equity > 0 else 0.0
                 
                 db_signal = Signal(
                     signal_id=sig_id,
@@ -478,7 +479,10 @@ def run_watchlist_scan(
                 reasons_json=json.dumps(scoring_res["reasons"] + mtf_res["reasons"] + regime_reasons),
                 warnings_json=json.dumps(warnings_list),
                 error_message=block_reason,
-                created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+                created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                position_size_units=pos_size_units,
+                candidate_risk_amount=candidate_risk_amount,
+                candidate_risk_pct=candidate_risk_pct
             ))
             
         if symbol_has_error:
@@ -517,6 +521,7 @@ def run_watchlist_scan(
     insert_scan_run(run_summary, db_path)
     
     # Save individual scan results
+    from tradenexus.scanner.scan_repository import insert_scan_result
     for r in results:
         insert_scan_result(r, db_path)
         

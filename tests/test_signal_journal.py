@@ -75,9 +75,9 @@ def test_insert_and_duplicate_prevention():
     assert len(signals) == 1
     assert signals[0].signal_id == "test_id_123"
     
-    # Second insert of the same signal (should ignore without error)
+    # Second insert of the same signal (should ignore and return False)
     res2 = insert_signal(sig, TEST_DB_PATH)
-    assert res2
+    assert not res2
     
     # Check count is still 1
     signals = load_signals(TEST_DB_PATH)

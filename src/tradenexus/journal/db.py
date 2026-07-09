@@ -194,7 +194,10 @@ def init_db(db_path: str = None):
                     reasons_json TEXT,
                     warnings_json TEXT,
                     error_message TEXT,
-                    created_at TEXT
+                    created_at TEXT,
+                    position_size_units REAL,
+                    candidate_risk_amount REAL,
+                    candidate_risk_pct REAL
                 );
             """)
             
@@ -266,6 +269,28 @@ def init_db(db_path: str = None):
                 );
             """)
             
+            # Indexes for Query Speed Optimization
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_time ON signals(candle_close_time DESC);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_symbol_tf ON signals(symbol, timeframe);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_actionable ON signals(is_actionable, candle_close_time DESC);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_alert_log_signal_provider ON alert_log(signal_id, provider);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_results_run ON scan_results(scan_run_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_scan_results_symbol ON scan_results(symbol, timeframe);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_events_time ON portfolio_risk_events(created_at DESC);")
+            
+            # Self-healing schema upgrade for older databases
+            try:
+                cursor.execute("PRAGMA table_info(scan_results);")
+                columns = [col["name"] for col in cursor.fetchall()]
+                if "position_size_units" not in columns:
+                    conn.execute("ALTER TABLE scan_results ADD COLUMN position_size_units REAL;")
+                if "candidate_risk_amount" not in columns:
+                    conn.execute("ALTER TABLE scan_results ADD COLUMN candidate_risk_amount REAL;")
+                if "candidate_risk_pct" not in columns:
+                    conn.execute("ALTER TABLE scan_results ADD COLUMN candidate_risk_pct REAL;")
+            except Exception as alter_err:
+                logger.warning(f"Could not perform self-healing ALTER TABLE for scan_results: {alter_err}")
+
             # Save version to db_metadata
             conn.execute("INSERT OR REPLACE INTO db_metadata (key, value) VALUES ('schema_version', ?);", (str(current_version),))
             conn.commit()

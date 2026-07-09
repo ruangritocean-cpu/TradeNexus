@@ -9,9 +9,32 @@ from tradenexus.diagnostics.alert_health import check_alert_configuration, simul
 from tradenexus.diagnostics.report import generate_release_readiness_report
 from tradenexus.scanner.watchlist import load_watchlist
 
+from tradenexus.data.cache import global_cache
+
 def render_diagnostics_ui(db_path: str = None, watchlist_path: str = None):
     st.header("🧪 Diagnostics & Release Command Center")
     st.markdown("Diagnose environment configuration settings, database schemas, API connection paths, and dry run alerts.")
+    
+    # Cache Diagnostics Panel
+    st.subheader("💾 Cache Diagnostics")
+    diag = global_cache.get_diagnostics()
+    col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+    with col_c1:
+        st.metric("Cached Items", diag["active_items"])
+    with col_c2:
+        st.metric("Cache Hits", diag["hits"])
+    with col_c3:
+        st.metric("Cache Misses", diag["misses"])
+    with col_c4:
+        st.metric("Hit Ratio", f"{diag['hit_ratio_pct']:.1f}%")
+        
+    if st.button("🧹 Clear Data Cache"):
+        global_cache.clear()
+        st.success("Data cache cleared successfully!")
+        st.rerun()
+        
+    st.markdown("---")
+    st.subheader("⚙️ System Integrity Operations")
     
     # 1. Action controls
     col_a1, col_a2, col_a3, col_a4 = st.columns(4)

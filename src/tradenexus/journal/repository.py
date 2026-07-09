@@ -56,7 +56,8 @@ def insert_signal(signal: Signal, db_path: str = None) -> bool:
     now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
     try:
         with conn:
-            conn.execute("""
+            cursor = conn.cursor()
+            cursor.execute("""
                 INSERT OR IGNORE INTO signals (
                     signal_id, symbol, timeframe, candle_close_time, decision_state,
                     direction, alignment_type, entry, sl, tp1, tp2, rr_tp1, rr_tp2,
@@ -85,7 +86,8 @@ def insert_signal(signal: Signal, db_path: str = None) -> bool:
                 signal.volume_confirmation, signal.vwap_alignment, signal.bos_present,
                 signal.choch_present, signal.fvg_present, signal.liquidity_sweep_present
             ))
-        return True
+            inserted = cursor.rowcount > 0
+        return inserted
     except Exception as e:
         logger.error(f"Error inserting signal {signal.signal_id}: {str(e)}")
         return False
@@ -297,11 +299,13 @@ def insert_alert_log(
     now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
     try:
         with conn:
-            conn.execute("""
+            cursor = conn.cursor()
+            cursor.execute("""
                 INSERT OR IGNORE INTO alert_log (signal_id, provider, status, sent_at, error_message)
                 VALUES (?, ?, ?, ?, ?)
             """, (signal_id, provider, status, now_str, error_message))
-        return True
+            inserted = cursor.rowcount > 0
+        return inserted
     except Exception as e:
         logger.error(f"Error inserting alert log: {str(e)}")
         return False

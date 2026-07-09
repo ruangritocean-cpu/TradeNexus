@@ -52,9 +52,15 @@ Open the local address printed by Streamlit in your web browser (usually `http:/
 
 ## ⚙️ Project File Structure
 
-- `app.py`: Streamlit application interface layout and main workflow.
-- `data_manager.py`: Connects to `yfinance` to fetch OHLCV data with API boundary handling.
-- `mtf_engine.py`: Dynamic pandas resampling engine.
-- `indicators.py`: Technical indicator calculations.
-- `ui_components.py`: Renders custom TTD HTML tables, and Plotly interactive subplots.
+- `app.py`: Streamlit application entry point launcher.
+- `src/tradenexus/`: Clean, modular Python package.
+  - `data/`: Data cache layer (`cache.py`) and Yahoo Finance provider (`providers.py`).
+  - `pipeline/`: Unified shared pipelines (`market_pipeline.py`, `indicator_pipeline.py`, `decision_pipeline.py`).
+  - `indicators/`: Technical indicators (ActionZone, KAMA, MACD, SMC Lite, MCDX, Volume, Structures, Liquidity).
+  - `signals/`: Decision state, rules, scoring, and risk check vetoes.
+  - `portfolio/`: Exposure tracking, limits rules, and position sizing.
+  - `journal/`: SQLite schema initialization (`db.py`) and repository queries (`repository.py`).
+  - `explain/`: Explainability briefs builder (`decision_brief.py`) and invalidation templates.
+  - `ui/`: Lazy-rendering page tabs (`technical_tab.py`, `strategy_lab_tab.py`, `diagnostics_ui.py`, etc.) and plotly charts (`charts.py`).
+- `tests/`: 66 unit tests checking logic correctness and preventing look-ahead bias.
 - `requirements.txt`: Python package dependency list.

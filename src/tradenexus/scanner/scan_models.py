@@ -51,3 +51,6 @@ class ScanResult:
     created_at: str
     signal_id: Optional[str] = None
     id: Optional[int] = None
+    position_size_units: float = 0.0
+    candidate_risk_amount: float = 0.0
+    candidate_risk_pct: float = 0.0

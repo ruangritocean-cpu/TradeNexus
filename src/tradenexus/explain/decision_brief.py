@@ -1,5 +1,6 @@
 import datetime
 import logging
+import json
 from typing import Dict, Any, Optional
 from tradenexus.explain.brief_models import DecisionBrief, BriefRiskPlan, BriefPortfolioCheck
 from tradenexus.explain.reason_builder import build_reasons
@@ -40,8 +41,8 @@ def generate_decision_brief(
     p_profile = load_symbol_profile(symbol, db_path)
     
     p_status = data.get("portfolio_risk_status", "OK")
-    p_reasons = []
-    p_warns = []
+    p_reasons = data.get("portfolio_reasons", [])
+    p_warns = data.get("portfolio_warnings", [])
     
     # Position sizing variables
     pv = p_profile.point_value if p_profile else p_settings.default_point_value
@@ -85,8 +86,8 @@ def generate_decision_brief(
         risk_amount=risk_dollars
     )
     
-    # Re-verify portfolio limit blocker if needed
-    if db_path:
+    # Re-verify portfolio limit blocker if needed and not already provided
+    if not data.get("portfolio_risk_status") and db_path:
         exposure = calculate_portfolio_exposure(db_path, p_settings)
         # To avoid slow downloads, use cached watchlist correlation inside scan run or simple empty correlation
         from tradenexus.portfolio.risk_models import CorrelationRiskResult
