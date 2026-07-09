@@ -28,7 +28,9 @@ def format_alert_message(ticker: str, timeframe: str, strategy: dict) -> str:
     reasons_str = "\n".join([f"• {r}" for r in reasons]) if reasons else "None"
     warnings_str = "\n".join([f"• {w}" for w in warnings]) if warnings else "None"
     
-    msg = f"""<b>TradeNexus Signal Alert</b>
+    has_pb_warning = any("playbook" in w.lower() or "limit" in w.lower() or "session" in w.lower() or "cooldown" in w.lower() for w in warnings)
+    header = "⚠️ <b>TradeNexus Signal Alert (PLAYBOOK WARNING ACTIVE)</b>" if has_pb_warning else "<b>TradeNexus Signal Alert</b>"
+    msg = f"""{header}
 ──────────────────
 <b>Asset:</b> {ticker}
 <b>Timeframe:</b> {timeframe}
@@ -85,7 +87,8 @@ def dispatch_alert(
     discord_webhook_url: str = None,
     tg_bot_token: str = None,
     tg_chat_id: str = None,
-    db_path: str = None
+    db_path: str = None,
+    workspace_id: str = None
 ) -> dict:
     """
     Dispatches alerts to Discord and Telegram.
@@ -94,6 +97,10 @@ def dispatch_alert(
     Returns:
         dict: Status of each provider {"discord": bool, "telegram": bool}
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     results = {"discord": "NOT_CONFIGURED", "telegram": "NOT_CONFIGURED"}
     alert_msg = format_alert_message(ticker, timeframe, strategy)
     
@@ -101,13 +108,13 @@ def dispatch_alert(
     if discord_webhook_url:
         provider = "discord"
         # Check if already sent
-        if check_alert_exists(signal_id, provider, db_path):
-            logger.info(f"Discord alert already exists for signal {signal_id}. Skipping.")
+        if check_alert_exists(signal_id, provider, db_path, workspace_id):
+            logger.info(f"Discord alert already exists for signal {signal_id} in workspace {workspace_id}. Skipping.")
             results["discord"] = "SKIPPED_DUPLICATE"
         else:
             success, err_msg = send_discord_webhook(discord_webhook_url, alert_msg)
             if success:
-                insert_alert_log(signal_id, provider, "SENT", db_path=db_path)
+                insert_alert_log(signal_id, provider, "SENT", db_path=db_path, workspace_id=workspace_id)
                 results["discord"] = "SENT"
             else:
                 logger.error(f"Failed to dispatch Discord alert: {err_msg}")
@@ -116,13 +123,13 @@ def dispatch_alert(
     # 2. Telegram Dispatch
     if tg_bot_token and tg_chat_id:
         provider = "telegram"
-        if check_alert_exists(signal_id, provider, db_path):
-            logger.info(f"Telegram alert already exists for signal {signal_id}. Skipping.")
+        if check_alert_exists(signal_id, provider, db_path, workspace_id):
+            logger.info(f"Telegram alert already exists for signal {signal_id} in workspace {workspace_id}. Skipping.")
             results["telegram"] = "SKIPPED_DUPLICATE"
         else:
             success, err_msg = send_telegram_message(tg_bot_token, tg_chat_id, alert_msg)
             if success:
-                insert_alert_log(signal_id, provider, "SENT", db_path=db_path)
+                insert_alert_log(signal_id, provider, "SENT", db_path=db_path, workspace_id=workspace_id)
                 results["telegram"] = "SENT"
             else:
                 logger.error(f"Failed to dispatch Telegram alert: {err_msg}")

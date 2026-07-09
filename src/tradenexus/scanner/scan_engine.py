@@ -88,22 +88,58 @@ def run_watchlist_scan(
         symbol_has_error = False
         symbol_has_warning = False
         
-        # 1. Fetch and resample MTF data using fetch_ohlcv_data
+        # 1. Fetch and resample MTF data using fetch_ohlcv_result
         try:
-            df_15m, w_15m = fetch_ohlcv_data(symbol, interval="15m")
-            df_1h, w_1h = fetch_ohlcv_data(symbol, interval="1h")
-            df_1d, w_1d = fetch_ohlcv_data(symbol, interval="1d")
+            from tradenexus.data.providers import fetch_ohlcv_result
             
-            if df_1h.empty or df_1d.empty:
-                raise ValueError("Incomplete historical data fetched from yfinance.")
+            asset_class = "CRYPTO" if ("BTC" in symbol or "ETH" in symbol) else "EQUITIES"
+            
+            res_15m = fetch_ohlcv_result(symbol, interval="15m", asset_class=asset_class)
+            res_1h = fetch_ohlcv_result(symbol, interval="1h", asset_class=asset_class)
+            res_1d = fetch_ohlcv_result(symbol, interval="1d", asset_class=asset_class)
+            
+            if (res_15m.data_quality_status == "INVALID" or 
+                res_1h.data_quality_status == "INVALID" or 
+                res_1d.data_quality_status == "INVALID"):
+                all_errors = res_15m.errors + res_1h.errors + res_1d.errors
+                raise ValueError("Data Quality Check is INVALID: " + "; ".join(all_errors))
+                
+            df_15m = res_15m.df.copy()
+            df_1h = res_1h.df.copy()
+            df_1d = res_1d.df.copy()
+            
+            # Map Capitalized columns for indicator calculation compatibility
+            for df_temp in [df_15m, df_1h, df_1d]:
+                df_temp["Open"] = df_temp["open"]
+                df_temp["High"] = df_temp["high"]
+                df_temp["Low"] = df_temp["low"]
+                df_temp["Close"] = df_temp["close"]
+                df_temp["Volume"] = df_temp["volume"]
                 
             df_4h = resample_timeframe(df_1h, "4h")
+            if not df_4h.empty:
+                df_4h["open"] = df_4h["Open"]
+                df_4h["high"] = df_4h["High"]
+                df_4h["low"] = df_4h["Low"]
+                df_4h["close"] = df_4h["Close"]
+                df_4h["volume"] = df_4h["Volume"]
+                df_4h["timestamp"] = df_4h.index.map(lambda x: x.isoformat() if hasattr(x, "isoformat") else str(x))
+                df_4h["provider"] = res_1h.provider_used
+                df_4h["symbol"] = symbol
+                df_4h["interval"] = "4h"
             
             tf_dfs = {
                 "15m": df_15m,
                 "1h": df_1h,
                 "4h": df_4h,
                 "1d": df_1d
+            }
+            
+            tf_results = {
+                "15m": res_15m,
+                "1h": res_1h,
+                "1d": res_1d,
+                "4h": res_1h
             }
             
             # Compute indicators for all timeframes via shared indicator pipeline
@@ -131,12 +167,19 @@ def run_watchlist_scan(
                 reasons_json="[]",
                 warnings_json="[]",
                 error_message=str(ex),
-                created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+                created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                provider_used="unknown",
+                fallback_used=0,
+                data_quality_warnings_json="[]",
+                data_quality_errors_json="[]",
+                latest_candle_time=None,
+                bars_available=0
             ))
             continue
             
         # Scan preferred timeframes
         for tf in pref_tfs:
+            res_tf = tf_results.get(tf)
             df_tf = tf_dfs.get(tf, pd.DataFrame())
             if df_tf.empty or len(df_tf) < 2:
                 skipped_count += 1
@@ -159,7 +202,13 @@ def run_watchlist_scan(
                     reasons_json="[]",
                     warnings_json="[]",
                     error_message="Historical data too short.",
-                    created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    provider_used=res_tf.provider_used if res_tf else "unknown",
+                    fallback_used=res_tf.fallback_used if res_tf else 0,
+                    data_quality_warnings_json=json.dumps(res_tf.warnings) if res_tf else "[]",
+                    data_quality_errors_json=json.dumps(res_tf.errors) if res_tf else "[]",
+                    latest_candle_time=res_tf.latest_candle_time if res_tf else None,
+                    bars_available=res_tf.bars_available if res_tf else 0
                 ))
                 continue
                 
@@ -189,7 +238,13 @@ def run_watchlist_scan(
                     reasons_json="[]",
                     warnings_json="[]",
                     error_message="Candle still open.",
-                    created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    provider_used=res_tf.provider_used if res_tf else "unknown",
+                    fallback_used=res_tf.fallback_used if res_tf else 0,
+                    data_quality_warnings_json=json.dumps(res_tf.warnings) if res_tf else "[]",
+                    data_quality_errors_json=json.dumps(res_tf.errors) if res_tf else "[]",
+                    latest_candle_time=res_tf.latest_candle_time if res_tf else None,
+                    bars_available=res_tf.bars_available if res_tf else 0
                 ))
                 continue
                 
@@ -261,6 +316,30 @@ def run_watchlist_scan(
             
             # Check warnings
             warnings_list = scoring_res["warnings"] + mtf_res["warnings"] + regime_warnings
+            
+            # Apply Playbook Rule Engine
+            pb_status = "PASS"
+            if c_state in ["READY", "ENTRY TRIGGERED"]:
+                from tradenexus.playbook.playbook_repository import get_active_playbook
+                from tradenexus.playbook.rule_engine import evaluate_playbook_rules
+                
+                playbook = get_active_playbook(db_path)
+                pb_status, pb_passed, pb_warnings, pb_violations = evaluate_playbook_rules(
+                    playbook=playbook,
+                    symbol=symbol,
+                    timeframe=tf,
+                    setup_type=alignment_type,
+                    confluence_score=scoring_res["confluence_score"],
+                    rr=risk_res.get("RR_TP1", 0.0),
+                    market_regime=regime,
+                    db_path=db_path
+                )
+                
+                if pb_status == "BLOCKED":
+                    warnings_list.extend(pb_violations)
+                elif pb_status == "WARNING":
+                    warnings_list.extend(pb_warnings)
+                    
             if warnings_list:
                 symbol_has_warning = True
                 
@@ -268,7 +347,7 @@ def run_watchlist_scan(
             journal_status = "SKIPPED_NO_TRADE"
             sig_id = None
             
-            is_actionable = 1 if c_state in ["READY", "ENTRY TRIGGERED"] else 0
+            is_actionable = 1 if (c_state in ["READY", "ENTRY TRIGGERED"] and pb_status != "BLOCKED") else 0
             
             # Candidate Sizing Calculation
             pos_size_units = 0.0
@@ -365,8 +444,12 @@ def run_watchlist_scan(
             portfolio_risk_status = "OK"
             block_reason = ""
             
+            # Check Playbook blocking first
+            if pb_status == "BLOCKED":
+                alert_status = "BLOCKED_BY_PLAYBOOK"
+            
             # Run Portfolio Risk check if setup is actionable
-            if is_actionable:
+            elif is_actionable:
                 limits_res = check_portfolio_risk_limits(
                     settings=p_settings,
                     exposure=p_exposure,
@@ -412,6 +495,7 @@ def run_watchlist_scan(
                 and risk_res["R_Vetoed"] == 0  # not vetoed
                 and "LOW_LIQUIDITY" not in flags
                 and portfolio_risk_status != "BLOCKED"
+                and pb_status != "BLOCKED"
             ):
                 strategy_payload = {
                     "Decision": c_state,
@@ -473,7 +557,7 @@ def run_watchlist_scan(
                 rr_tp1=risk_res["RR_TP1"],
                 primary_regime=regime,
                 regime_flags_json=json.dumps(flags),
-                data_quality_status="VALID",
+                data_quality_status=res_tf.data_quality_status if res_tf else "VALID",
                 alert_status=alert_status,
                 journal_status=journal_status,
                 reasons_json=json.dumps(scoring_res["reasons"] + mtf_res["reasons"] + regime_reasons),
@@ -482,7 +566,13 @@ def run_watchlist_scan(
                 created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 position_size_units=pos_size_units,
                 candidate_risk_amount=candidate_risk_amount,
-                candidate_risk_pct=candidate_risk_pct
+                candidate_risk_pct=candidate_risk_pct,
+                provider_used=res_tf.provider_used if res_tf else "unknown",
+                fallback_used=res_tf.fallback_used if res_tf else 0,
+                data_quality_warnings_json=json.dumps(res_tf.warnings) if res_tf else "[]",
+                data_quality_errors_json=json.dumps(res_tf.errors) if res_tf else "[]",
+                latest_candle_time=res_tf.latest_candle_time if res_tf else None,
+                bars_available=res_tf.bars_available if res_tf else 0
             ))
             
         if symbol_has_error:

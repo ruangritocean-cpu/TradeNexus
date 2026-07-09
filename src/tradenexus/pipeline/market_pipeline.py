@@ -16,7 +16,7 @@ def fetch_and_resample_mtf_data(symbol: str) -> Dict[str, pd.DataFrame]:
     df_1d, w_1d = fetch_ohlcv_data(symbol, interval="1d")
     
     if df_15m.empty or df_1h.empty or df_1d.empty:
-        raise ValueError("Incomplete historical data fetched from yfinance.")
+        raise ValueError("Incomplete historical data fetched from data providers.")
         
     df_4h = resample_timeframe(df_1h, "4h")
     

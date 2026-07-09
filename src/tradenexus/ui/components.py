@@ -368,12 +368,15 @@ def render_trading_strategy_panel(strategy: dict):
     </style>
     
     <div class="decision-card">
-        <div class="decision-header">
+        <div class="decision-header" style="flex-wrap: wrap; gap: 10px;">
             <div>
-                <span class="decision-state-badge">{state_title}</span>
-                <span style="margin-left: 10px; font-weight: 700; font-size: 1.1rem; color: #F3F4F6;">
+                <span class="decision-state-badge" title="Final Decision = ผลหลังผ่าน RR / Regime / Portfolio / Playbook filters">{state_title}</span>
+                <span style="margin-left: 10px; font-weight: 700; font-size: 1.1rem; color: #F3F4F6;" title="Technical Bias = ทิศทางเชิงเทคนิค">
                     {direction_display}
                 </span>
+                <div style="font-size: 0.75rem; color: #9CA3AF; margin-top: 4px; margin-left: 5px;">
+                    💡 <em>Technical Bias = ทิศทางเชิงเทคนิค | Final Decision = ผลหลังผ่าน RR / Regime / Portfolio / Playbook filters</em>
+                </div>
             </div>
             <div>
                 <span class="decision-align-badge">{alignment_type}</span>
@@ -670,5 +673,190 @@ def render_breakdown_tables(signals_data: list):
             Total_R=("realized_r_multiple", "sum")
         )
         st.dataframe(smc_grp, use_container_width=True)
+
+def render_recommendation_card(rec: dict):
+    """
+    Renders the walk-forward parameter calibration recommendations card.
+    """
+    import json
+    params = json.loads(rec["params_json"]) if isinstance(rec["params_json"], str) else rec["params_json"]
+    status = rec.get("recommendation_status", "UNKNOWN")
+    score = rec.get("robustness_score", 0.0)
+    samples = rec.get("sample_size", 0)
+    notes = rec.get("notes", "")
+    
+    if status == "RECOMMENDED":
+        badge_cls = "badge-rec-success"
+        badge_title = "🌟 RECOMMENDED"
+    elif "WARNING" in status:
+        badge_cls = "badge-rec-warning"
+        badge_title = f"⚠️ {status}"
+    else:
+        badge_cls = "badge-rec-rejected"
+        badge_title = f"🚫 {status}"
+        
+    html = f"""
+    <style>
+    .rec-card {{
+        background-color: #1F2937;
+        border: 2px solid #374151;
+        border-radius: 10px;
+        padding: 20px;
+        color: #F9FAFB;
+        font-family: 'Inter', sans-serif;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        margin-bottom: 20px;
+    }}
+    .rec-header {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding-bottom: 12px;
+        margin-bottom: 15px;
+    }}
+    .badge-rec-success {{
+        background-color: #064E3B;
+        color: #34D399;
+        border: 1px solid #34D399;
+        font-weight: 800;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+    }}
+    .badge-rec-warning {{
+        background-color: #78350F;
+        color: #FBBF24;
+        border: 1px solid #FBBF24;
+        font-weight: 800;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+    }}
+    .badge-rec-rejected {{
+        background-color: #991B1B;
+        color: #FCA5A5;
+        border: 1px solid #FCA5A5;
+        font-weight: 800;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+    }}
+    .rec-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 15px;
+        margin-bottom: 15px;
+    }}
+    .rec-param-box {{
+        background-color: #111827;
+        border: 1px solid #374151;
+        border-radius: 6px;
+        padding: 10px;
+        text-align: center;
+    }}
+    .rec-param-title {{
+        color: #9CA3AF;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }}
+    .rec-param-value {{
+        font-size: 1.15rem;
+        font-weight: 700;
+    }}
+    </style>
+    <div class="rec-card">
+        <div class="rec-header">
+            <div>
+                <span class="{badge_cls}">{badge_title}</span>
+                <span style="margin-left: 10px; font-weight: 700; font-size: 1rem; color: #E5E7EB;">
+                    Robustness: {score:.1f}% | Out-of-Sample Trades: {samples}
+                </span>
+            </div>
+            <div style="font-size: 0.8rem; color: #9CA3AF;">
+                Valid From: {rec['valid_from'][:19]}
+            </div>
+        </div>
+        <div class="rec-grid">
+            <div class="rec-param-box">
+                <div class="rec-param-title">Confluence Thresh</div>
+                <div class="rec-param-value" style="color: #60A5FA;">{params.get('confluence_threshold', 70.0):.1f}%</div>
+            </div>
+            <div class="rec-param-box">
+                <div class="rec-param-title">Min R/R Limit</div>
+                <div class="rec-param-value" style="color: #34D399;">{params.get('rr_threshold', 1.5):.2f} R</div>
+            </div>
+            <div class="rec-param-box">
+                <div class="rec-param-title">ADX Strength</div>
+                <div class="rec-param-value" style="color: #FBBF24;">{params.get('adx_threshold', 25.0):.1f}</div>
+            </div>
+            <div class="rec-param-box">
+                <div class="rec-param-title">Max Bars Hold</div>
+                <div class="rec-param-value" style="color: #F43F5E;">{params.get('max_bars_to_hold', 24)}</div>
+            </div>
+        </div>
+        <div style="font-size: 0.85rem; color: #9CA3AF; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+            <strong>Notes / Validation Details:</strong> {notes}
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_opt_results_table(results: list):
+    """
+    Renders walk-forward window index results as a clean high-contrast table.
+    """
+    import json
+    if not results:
+        st.info("No window results available.")
+        return
+        
+    html = """
+    <table style="width: 100%; border-collapse: collapse; background-color: #1F2937; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-family: 'Inter', sans-serif; color: #F9FAFB; font-size: 0.85rem;">
+        <thead>
+            <tr style="background-color: #111827; border-bottom: 2px solid #374151; text-align: left;">
+                <th style="padding: 12px 15px;">Window</th>
+                <th style="padding: 12px 15px;">OOS Test Period</th>
+                <th style="padding: 12px 15px;">Optimal Params</th>
+                <th style="padding: 12px 15px; text-align: center;">In-Sample Exp</th>
+                <th style="padding: 12px 15px; text-align: center;">Out-Sample Exp</th>
+                <th style="padding: 12px 15px; text-align: center;">Robustness</th>
+                <th style="padding: 12px 15px;">Warnings</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    
+    for r in results:
+        params = json.loads(r["params_json"]) if isinstance(r["params_json"], str) else r["params_json"]
+        is_metrics = json.loads(r["in_sample_metrics_json"]) if isinstance(r["in_sample_metrics_json"], str) else r["in_sample_metrics_json"]
+        oos_metrics = json.loads(r["out_sample_metrics_json"]) if isinstance(r["out_sample_metrics_json"], str) else r["out_sample_metrics_json"]
+        warnings = json.loads(r["warnings_json"]) if isinstance(r["warnings_json"], str) else r["warnings_json"]
+        
+        warns_str = ", ".join(warnings) if warnings else "-"
+        warn_style = "color: #FCA5A5;" if warnings else "color: #9CA3AF;"
+        
+        param_desc = f"Conf: {params.get('confluence_threshold', 70.0):.0f}%, RR: {params.get('rr_threshold', 1.5):.1f}"
+        
+        html += f"""
+            <tr style="border-bottom: 1px solid #374151;">
+                <td style="padding: 10px 15px; font-weight: 700;">#{r['window_index']}</td>
+                <td style="padding: 10px 15px; color: #E5E7EB;">{r['test_start'][:10]} to {r['test_end'][:10]}</td>
+                <td style="padding: 10px 15px; color: #60A5FA;">{param_desc}</td>
+                <td style="padding: 10px 15px; text-align: center; color: #34D399;">{is_metrics.get('expectancy', 0.0):+.2f}R ({is_metrics.get('total_trades', 0)} t)</td>
+                <td style="padding: 10px 15px; text-align: center; color: #10B981; font-weight: 700;">{oos_metrics.get('expectancy', 0.0):+.2f}R ({oos_metrics.get('total_trades', 0)} t)</td>
+                <td style="padding: 10px 15px; text-align: center; font-weight: 700; color: #FBBF24;">{r['robustness_score']:.1f}%</td>
+                <td style="padding: 10px 15px; {warn_style}">{warns_str}</td>
+            </tr>
+        """
+        
+    html += """
+        </tbody>
+    </table>
+    """
+    
+    clean_html = "\n".join([line.strip() for line in html.split("\n")])
+    st.markdown(clean_html, unsafe_allow_html=True)
 
 

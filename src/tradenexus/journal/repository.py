@@ -47,11 +47,17 @@ def generate_signal_id(
     hasher = hashlib.sha256(raw_str.encode("utf-8"))
     return hasher.hexdigest()
 
-def insert_signal(signal: Signal, db_path: str = None) -> bool:
+def insert_signal(signal: Signal, db_path: str = None, workspace_id: str = None) -> bool:
     """
     Inserts a Signal dataclass into the SQLite database.
     Standardizes timestamps to timezone-aware UTC ISO format.
     """
+    if workspace_id is None:
+        workspace_id = getattr(signal, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
     try:
@@ -68,9 +74,9 @@ def insert_signal(signal: Signal, db_path: str = None) -> bool:
                     realized_r_multiple, reasons_json, warnings_json, created_at,
                     primary_regime, regime_flags, regime_score, volume_confirmation,
                     vwap_alignment, bos_present, choch_present, fvg_present,
-                    liquidity_sweep_present
+                    liquidity_sweep_present, workspace_id
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             """, (
                 signal.signal_id, signal.symbol, signal.timeframe, signal.candle_close_time,
@@ -84,7 +90,8 @@ def insert_signal(signal: Signal, db_path: str = None) -> bool:
                 json.dumps(signal.reasons), json.dumps(signal.warnings), now_str,
                 signal.primary_regime, signal.regime_flags, signal.regime_score,
                 signal.volume_confirmation, signal.vwap_alignment, signal.bos_present,
-                signal.choch_present, signal.fvg_present, signal.liquidity_sweep_present
+                signal.choch_present, signal.fvg_present, signal.liquidity_sweep_present,
+                workspace_id
             ))
             inserted = cursor.rowcount > 0
         return inserted
@@ -94,19 +101,23 @@ def insert_signal(signal: Signal, db_path: str = None) -> bool:
     finally:
         conn.close()
 
-def load_signals(db_path: str = None, actionable_only: bool = False) -> List[Signal]:
+def load_signals(db_path: str = None, actionable_only: bool = False, workspace_id: str = None) -> List[Signal]:
     """
-    Loads all saved Signals from the database.
+    Loads all saved Signals from the database for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     signals_list = []
     try:
-        query = "SELECT * FROM signals ORDER BY candle_close_time DESC"
+        query = "SELECT * FROM signals WHERE workspace_id = ? ORDER BY candle_close_time DESC"
         if actionable_only:
-            query = "SELECT * FROM signals WHERE is_actionable = 1 ORDER BY candle_close_time DESC"
+            query = "SELECT * FROM signals WHERE is_actionable = 1 AND workspace_id = ? ORDER BY candle_close_time DESC"
             
         cursor = conn.cursor()
-        cursor.execute(query)
+        cursor.execute(query, (workspace_id,))
         rows = cursor.fetchall()
         for r in rows:
             reasons = []
@@ -157,7 +168,8 @@ def load_signals(db_path: str = None, actionable_only: bool = False) -> List[Sig
                 bos_present=_get_row_val(r, "bos_present", 0),
                 choch_present=_get_row_val(r, "choch_present", 0),
                 fvg_present=_get_row_val(r, "fvg_present", 0),
-                liquidity_sweep_present=_get_row_val(r, "liquidity_sweep_present", 0)
+                liquidity_sweep_present=_get_row_val(r, "liquidity_sweep_present", 0),
+                workspace_id=_get_row_val(r, "workspace_id", "default_workspace")
             )
             signals_list.append(sig)
     except Exception as e:
@@ -166,15 +178,19 @@ def load_signals(db_path: str = None, actionable_only: bool = False) -> List[Sig
         conn.close()
     return signals_list
 
-def load_signals_paginated(limit: int, offset: int, db_path: str = None) -> List[Signal]:
+def load_signals_paginated(limit: int, offset: int, db_path: str = None, workspace_id: str = None) -> List[Signal]:
     """
     Loads page-limited signals for UI performance.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     signals_list = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM signals ORDER BY candle_close_time DESC LIMIT ? OFFSET ?", (limit, offset))
+        cursor.execute("SELECT * FROM signals WHERE workspace_id = ? ORDER BY candle_close_time DESC LIMIT ? OFFSET ?", (workspace_id, limit, offset))
         rows = cursor.fetchall()
         for r in rows:
             reasons = []
@@ -225,7 +241,8 @@ def load_signals_paginated(limit: int, offset: int, db_path: str = None) -> List
                 bos_present=_get_row_val(r, "bos_present", 0),
                 choch_present=_get_row_val(r, "choch_present", 0),
                 fvg_present=_get_row_val(r, "fvg_present", 0),
-                liquidity_sweep_present=_get_row_val(r, "liquidity_sweep_present", 0)
+                liquidity_sweep_present=_get_row_val(r, "liquidity_sweep_present", 0),
+                workspace_id=_get_row_val(r, "workspace_id", "default_workspace")
             )
             signals_list.append(sig)
     except Exception as e:
@@ -234,15 +251,19 @@ def load_signals_paginated(limit: int, offset: int, db_path: str = None) -> List
         conn.close()
     return signals_list
 
-def load_alerts_paginated(limit: int, offset: int, db_path: str = None) -> List[AlertLog]:
+def load_alerts_paginated(limit: int, offset: int, db_path: str = None, workspace_id: str = None) -> List[AlertLog]:
     """
-    Loads page-limited alerts history.
+    Loads page-limited alerts history for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     logs = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM alert_log ORDER BY sent_at DESC LIMIT ? OFFSET ?", (limit, offset))
+        cursor.execute("SELECT * FROM alert_log WHERE workspace_id = ? ORDER BY sent_at DESC LIMIT ? OFFSET ?", (workspace_id, limit, offset))
         rows = cursor.fetchall()
         for r in rows:
             logs.append(AlertLog(
@@ -251,7 +272,8 @@ def load_alerts_paginated(limit: int, offset: int, db_path: str = None) -> List[
                 provider=r["provider"],
                 status=r["status"],
                 sent_at=r["sent_at"],
-                error_message=r["error_message"]
+                error_message=r["error_message"],
+                workspace_id=_get_row_val(r, "workspace_id", "default_workspace")
             ))
     except Exception as e:
         logger.error(f"Error loading paginated alerts: {str(e)}")
@@ -265,22 +287,27 @@ def update_signal_outcome(
     outcome_time: Optional[str],
     bars_to_outcome: Optional[int],
     realized_r: float,
-    db_path: str = None
+    db_path: str = None,
+    workspace_id: str = None
 ) -> bool:
     """
     Updates the outcome status of a saved signal.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
             conn.execute("""
                 UPDATE signals 
                 SET outcome_status = ?, outcome_time = ?, bars_to_outcome = ?, realized_r_multiple = ?
-                WHERE signal_id = ?
-            """, (outcome_status, outcome_time, bars_to_outcome, realized_r, signal_id))
+                WHERE signal_id = ? AND workspace_id = ?
+            """, (outcome_status, outcome_time, bars_to_outcome, realized_r, signal_id, workspace_id))
         return True
     except Exception as e:
-        logger.error(f"Error updating outcome for signal {signal_id}: {str(e)}")
+        logger.error(f"Error updating outcome for signal {signal_id} inside workspace {workspace_id}: {str(e)}")
         return False
     finally:
         conn.close()
@@ -290,20 +317,25 @@ def insert_alert_log(
     provider: str,
     status: str,
     error_message: Optional[str] = None,
-    db_path: str = None
+    db_path: str = None,
+    workspace_id: str = None
 ) -> bool:
     """
     Logs an alert action into the alert_log table.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
     try:
         with conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT OR IGNORE INTO alert_log (signal_id, provider, status, sent_at, error_message)
-                VALUES (?, ?, ?, ?, ?)
-            """, (signal_id, provider, status, now_str, error_message))
+                INSERT OR IGNORE INTO alert_log (signal_id, provider, status, sent_at, error_message, workspace_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (signal_id, provider, status, now_str, error_message, workspace_id))
             inserted = cursor.rowcount > 0
         return inserted
     except Exception as e:
@@ -312,17 +344,21 @@ def insert_alert_log(
     finally:
         conn.close()
 
-def check_alert_exists(signal_id: str, provider: str, db_path: str = None) -> bool:
+def check_alert_exists(signal_id: str, provider: str, db_path: str = None, workspace_id: str = None) -> bool:
     """
-    Checks if an alert for the given signal_id and provider has already been dispatched.
+    Checks if an alert for the given signal_id, provider, and workspace has already been dispatched.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     exists = False
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT 1 FROM alert_log WHERE signal_id = ? AND provider = ?
-        """, (signal_id, provider))
+            SELECT 1 FROM alert_log WHERE signal_id = ? AND provider = ? AND workspace_id = ?
+        """, (signal_id, provider, workspace_id))
         exists = cursor.fetchone() is not None
     except Exception as e:
         logger.error(f"Error checking alert log: {str(e)}")
@@ -330,15 +366,19 @@ def check_alert_exists(signal_id: str, provider: str, db_path: str = None) -> bo
         conn.close()
     return exists
 
-def load_alert_logs(db_path: str = None) -> List[AlertLog]:
+def load_alert_logs(db_path: str = None, workspace_id: str = None) -> List[AlertLog]:
     """
-    Loads all alert logs.
+    Loads all alert logs for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     logs = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM alert_log ORDER BY sent_at DESC")
+        cursor.execute("SELECT * FROM alert_log WHERE workspace_id = ? ORDER BY sent_at DESC", (workspace_id,))
         rows = cursor.fetchall()
         for r in rows:
             logs.append(AlertLog(
@@ -347,7 +387,8 @@ def load_alert_logs(db_path: str = None) -> List[AlertLog]:
                 provider=r["provider"],
                 status=r["status"],
                 sent_at=r["sent_at"],
-                error_message=r["error_message"]
+                error_message=r["error_message"],
+                workspace_id=_get_row_val(r, "workspace_id", "default_workspace")
             ))
     except Exception as e:
         logger.error(f"Error loading alert logs: {str(e)}")
@@ -356,17 +397,21 @@ def load_alert_logs(db_path: str = None) -> List[AlertLog]:
     return logs
 
 # CSV Export Helpers
-def export_signals_to_csv(db_path: str = None) -> str:
+def export_signals_to_csv(db_path: str = None, workspace_id: str = None) -> str:
     """
-    Exports all saved signals to CSV format.
+    Exports saved signals to CSV format for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     output = io.StringIO()
     writer = csv.writer(output)
     
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM signals ORDER BY candle_close_time DESC")
+        cursor.execute("SELECT * FROM signals WHERE workspace_id = ? ORDER BY candle_close_time DESC", (workspace_id,))
         rows = cursor.fetchall()
         
         # Write Header
@@ -381,16 +426,20 @@ def export_signals_to_csv(db_path: str = None) -> str:
         
     return output.getvalue()
 
-def export_alert_log_to_csv(db_path: str = None) -> str:
+def export_alert_log_to_csv(db_path: str = None, workspace_id: str = None) -> str:
     """
-    Exports alert log to CSV format.
+    Exports alert log to CSV format for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     output = io.StringIO()
     writer = csv.writer(output)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM alert_log ORDER BY sent_at DESC")
+        cursor.execute("SELECT * FROM alert_log WHERE workspace_id = ? ORDER BY sent_at DESC", (workspace_id,))
         rows = cursor.fetchall()
         if rows:
             writer.writerow(rows[0].keys())
@@ -402,16 +451,20 @@ def export_alert_log_to_csv(db_path: str = None) -> str:
         conn.close()
     return output.getvalue()
 
-def export_trades_to_csv(db_path: str = None) -> str:
+def export_trades_to_csv(db_path: str = None, workspace_id: str = None) -> str:
     """
-    Exports trades to CSV format.
+    Exports trades to CSV format for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     output = io.StringIO()
     writer = csv.writer(output)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM trades ORDER BY opened_at DESC")
+        cursor.execute("SELECT * FROM trades WHERE workspace_id = ? ORDER BY opened_at DESC", (workspace_id,))
         rows = cursor.fetchall()
         if rows:
             writer.writerow(rows[0].keys())
@@ -438,44 +491,54 @@ def clear_backtest_results(db_path: str = None):
     finally:
         conn.close()
 
-def clear_demo_trades(db_path: str = None):
+def clear_demo_trades(db_path: str = None, workspace_id: str = None):
     """
-    Safely clears only simulated demo trade entries.
+    Safely clears only simulated demo trade entries for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
-            conn.execute("DELETE FROM trades;")
+            conn.execute("DELETE FROM trades WHERE workspace_id = ?;", (workspace_id,))
     except Exception as e:
         logger.error(f"Error clearing trades data: {str(e)}")
     finally:
         conn.close()
 
-def clear_alert_log(db_path: str = None):
+def clear_alert_log(db_path: str = None, workspace_id: str = None):
     """
-    Safely clears only alert dispatcher logs.
+    Safely clears only alert dispatcher logs for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
-            conn.execute("DELETE FROM alert_log;")
+            conn.execute("DELETE FROM alert_log WHERE workspace_id = ?;", (workspace_id,))
     except Exception as e:
         logger.error(f"Error clearing alert logs: {str(e)}")
     finally:
         conn.close()
 
-def clear_all_journal_data(db_path: str = None):
+def clear_all_journal_data(db_path: str = None, workspace_id: str = None):
     """
-    Wipes all tables clean.
+    Wipes all tables clean for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
-            conn.execute("DELETE FROM signals;")
-            conn.execute("DELETE FROM alert_log;")
-            conn.execute("DELETE FROM trades;")
-            conn.execute("DELETE FROM backtest_runs;")
-            conn.execute("DELETE FROM backtest_results;")
+            conn.execute("DELETE FROM signals WHERE workspace_id = ?;", (workspace_id,))
+            conn.execute("DELETE FROM alert_log WHERE workspace_id = ?;", (workspace_id,))
+            conn.execute("DELETE FROM trades WHERE workspace_id = ?;", (workspace_id,))
     except Exception as e:
         logger.error(f"Error wiping database data: {str(e)}")
     finally:

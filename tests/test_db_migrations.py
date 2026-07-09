@@ -72,13 +72,14 @@ def test_db_migration_workflow():
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM db_metadata WHERE key='schema_version';")
     version = cursor.fetchone()["value"]
-    assert version == "4"
+    assert version == "9"
     
     # Check that new column primary_regime exists
     cursor.execute("PRAGMA table_info(signals);")
     cols = [col["name"] for col in cursor.fetchall()]
     assert "primary_regime" in cols
     assert "regime_flags" in cols
+    assert "workspace_id" in cols
     
     # Check scanner tables exist
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scan_runs';")
@@ -92,6 +93,10 @@ def test_db_migration_workflow():
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio_risk_events';")
     assert cursor.fetchone() is not None
     
+    # Check playbook tables exist
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='playbooks';")
+    assert cursor.fetchone() is not None
+    
     conn.close()
     
     # 3. Running init_db again should be idempotent and not fail
@@ -101,5 +106,5 @@ def test_db_migration_workflow():
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM db_metadata WHERE key='schema_version';")
     version_after = cursor.fetchone()["value"]
-    assert version_after == "4"
+    assert version_after == "9"
     conn.close()

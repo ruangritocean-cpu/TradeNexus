@@ -14,7 +14,13 @@ def _get_row_val(r, col, default):
     except (IndexError, KeyError, sqlite3.IndexError, sqlite3.OperationalError):
         return default
 
-def insert_scan_run(scan_run: ScanRun, db_path: str = None) -> bool:
+def insert_scan_run(scan_run: ScanRun, db_path: str = None, workspace_id: str = None) -> bool:
+    if workspace_id is None:
+        workspace_id = getattr(scan_run, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -22,8 +28,8 @@ def insert_scan_run(scan_run: ScanRun, db_path: str = None) -> bool:
                 """
                 INSERT INTO scan_runs (
                     scan_run_id, started_at, finished_at, status,
-                    total_symbols, success_count, warning_count, error_count, skipped_count, config_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total_symbols, success_count, warning_count, error_count, skipped_count, config_json, workspace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     scan_run.scan_run_id,
@@ -35,7 +41,8 @@ def insert_scan_run(scan_run: ScanRun, db_path: str = None) -> bool:
                     scan_run.warning_count,
                     scan_run.error_count,
                     scan_run.skipped_count,
-                    scan_run.config_json
+                    scan_run.config_json,
+                    workspace_id
                 )
             )
         return True
@@ -45,7 +52,13 @@ def insert_scan_run(scan_run: ScanRun, db_path: str = None) -> bool:
     finally:
         conn.close()
 
-def insert_scan_result(result: ScanResult, db_path: str = None) -> bool:
+def insert_scan_result(result: ScanResult, db_path: str = None, workspace_id: str = None) -> bool:
+    if workspace_id is None:
+        workspace_id = getattr(result, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -56,8 +69,10 @@ def insert_scan_result(result: ScanResult, db_path: str = None) -> bool:
                     decision_state, direction, alignment_type, confluence_score, rr_tp1,
                     primary_regime, regime_flags_json, data_quality_status, alert_status,
                     journal_status, reasons_json, warnings_json, error_message, created_at,
-                    position_size_units, candidate_risk_amount, candidate_risk_pct
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    position_size_units, candidate_risk_amount, candidate_risk_pct,
+                    provider_used, fallback_used, data_quality_warnings_json, data_quality_errors_json,
+                    latest_candle_time, bars_available, workspace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     result.scan_run_id,
@@ -82,7 +97,14 @@ def insert_scan_result(result: ScanResult, db_path: str = None) -> bool:
                     result.created_at,
                     result.position_size_units,
                     result.candidate_risk_amount,
-                    result.candidate_risk_pct
+                    result.candidate_risk_pct,
+                    result.provider_used,
+                    result.fallback_used,
+                    result.data_quality_warnings_json,
+                    result.data_quality_errors_json,
+                    result.latest_candle_time,
+                    result.bars_available,
+                    workspace_id
                 )
             )
         return True
@@ -92,12 +114,16 @@ def insert_scan_result(result: ScanResult, db_path: str = None) -> bool:
     finally:
         conn.close()
 
-def load_scan_runs(limit: int = 50, offset: int = 0, db_path: str = None) -> List[ScanRun]:
+def load_scan_runs(limit: int = 50, offset: int = 0, db_path: str = None, workspace_id: str = None) -> List[ScanRun]:
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     runs = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM scan_runs ORDER BY started_at DESC LIMIT ? OFFSET ?", (limit, offset))
+        cursor.execute("SELECT * FROM scan_runs WHERE workspace_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?", (workspace_id, limit, offset))
         rows = cursor.fetchall()
         for r in rows:
             runs.append(ScanRun(
@@ -110,7 +136,8 @@ def load_scan_runs(limit: int = 50, offset: int = 0, db_path: str = None) -> Lis
                 warning_count=r["warning_count"],
                 error_count=r["error_count"],
                 skipped_count=r["skipped_count"],
-                config_json=r["config_json"]
+                config_json=r["config_json"],
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             ))
     except Exception as e:
         logger.error(f"Error loading scan runs: {str(e)}")
@@ -118,12 +145,16 @@ def load_scan_runs(limit: int = 50, offset: int = 0, db_path: str = None) -> Lis
         conn.close()
     return runs
 
-def load_scan_results_for_run(scan_run_id: str, db_path: str = None) -> List[ScanResult]:
+def load_scan_results_for_run(scan_run_id: str, db_path: str = None, workspace_id: str = None) -> List[ScanResult]:
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     results = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM scan_results WHERE scan_run_id = ? ORDER BY symbol ASC", (scan_run_id,))
+        cursor.execute("SELECT * FROM scan_results WHERE scan_run_id = ? AND workspace_id = ? ORDER BY symbol ASC", (scan_run_id, workspace_id))
         rows = cursor.fetchall()
         for r in rows:
             results.append(ScanResult(
@@ -150,7 +181,14 @@ def load_scan_results_for_run(scan_run_id: str, db_path: str = None) -> List[Sca
                 id=r["id"],
                 position_size_units=_get_row_val(r, "position_size_units", 0.0),
                 candidate_risk_amount=_get_row_val(r, "candidate_risk_amount", 0.0),
-                candidate_risk_pct=_get_row_val(r, "candidate_risk_pct", 0.0)
+                candidate_risk_pct=_get_row_val(r, "candidate_risk_pct", 0.0),
+                provider_used=_get_row_val(r, "provider_used", "unknown"),
+                fallback_used=_get_row_val(r, "fallback_used", 0),
+                data_quality_warnings_json=_get_row_val(r, "data_quality_warnings_json", "[]"),
+                data_quality_errors_json=_get_row_val(r, "data_quality_errors_json", "[]"),
+                latest_candle_time=_get_row_val(r, "latest_candle_time", None),
+                bars_available=_get_row_val(r, "bars_available", 0),
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             ))
     except Exception as e:
         logger.error(f"Error loading scan results for run: {str(e)}")
@@ -158,12 +196,16 @@ def load_scan_results_for_run(scan_run_id: str, db_path: str = None) -> List[Sca
         conn.close()
     return results
 
-def load_scan_results_paginated(limit: int = 50, offset: int = 0, db_path: str = None) -> List[ScanResult]:
+def load_scan_results_paginated(limit: int = 50, offset: int = 0, db_path: str = None, workspace_id: str = None) -> List[ScanResult]:
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     results = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM scan_results ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
+        cursor.execute("SELECT * FROM scan_results WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", (workspace_id, limit, offset))
         rows = cursor.fetchall()
         for r in rows:
             results.append(ScanResult(
@@ -190,7 +232,14 @@ def load_scan_results_paginated(limit: int = 50, offset: int = 0, db_path: str =
                 id=r["id"],
                 position_size_units=_get_row_val(r, "position_size_units", 0.0),
                 candidate_risk_amount=_get_row_val(r, "candidate_risk_amount", 0.0),
-                candidate_risk_pct=_get_row_val(r, "candidate_risk_pct", 0.0)
+                candidate_risk_pct=_get_row_val(r, "candidate_risk_pct", 0.0),
+                provider_used=_get_row_val(r, "provider_used", "unknown"),
+                fallback_used=_get_row_val(r, "fallback_used", 0),
+                data_quality_warnings_json=_get_row_val(r, "data_quality_warnings_json", "[]"),
+                data_quality_errors_json=_get_row_val(r, "data_quality_errors_json", "[]"),
+                latest_candle_time=_get_row_val(r, "latest_candle_time", None),
+                bars_available=_get_row_val(r, "bars_available", 0),
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             ))
     except Exception as e:
         logger.error(f"Error loading paginated scan results: {str(e)}")

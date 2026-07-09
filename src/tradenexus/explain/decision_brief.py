@@ -129,7 +129,10 @@ def generate_decision_brief(
     
     # Next Action
     next_action = "เฝ้าระวังและรอการยืนยันสัญญาณเพิ่มเติม"
-    if state == "ENTRY TRIGGERED":
+    alert_status = data.get("alert_status", "")
+    if alert_status == "BLOCKED_BY_PLAYBOOK":
+        next_action = "ระงับการเข้าเทรด (PLAYBOOK BLOCKED): ห้ามเข้าเทรดเนื่องจากละเมิดกฎวินัยหรือขีดจำกัดความเสี่ยงของ Playbook"
+    elif state == "ENTRY TRIGGERED":
         if p_status == "BLOCKED":
             next_action = "ระงับออเดอร์ (ALERT BLOCKED): ห้ามเทรดเนื่องจากความเสี่ยงพอร์ตโดยรวมเกินขีดจำกัดสูงสุด"
         else:

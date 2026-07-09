@@ -15,15 +15,19 @@ def _get_row_val(r, col, default):
     except (IndexError, KeyError, sqlite3.IndexError, sqlite3.OperationalError):
         return default
 
-def load_portfolio_settings(db_path: str = None) -> PortfolioSettings:
+def load_portfolio_settings(db_path: str = None, workspace_id: str = None) -> PortfolioSettings:
     """
-    Loads portfolio settings from database.
+    Loads portfolio settings from database for the active workspace.
     Creates default row if database is empty.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM portfolio_settings LIMIT 1")
+        cursor.execute("SELECT * FROM portfolio_settings WHERE workspace_id = ? LIMIT 1", (workspace_id,))
         r = cursor.fetchone()
         if r:
             return PortfolioSettings(
@@ -40,23 +44,30 @@ def load_portfolio_settings(db_path: str = None) -> PortfolioSettings:
                 correlation_cache_ttl_seconds=r["correlation_cache_ttl_seconds"],
                 default_contract_multiplier=r["default_contract_multiplier"],
                 default_point_value=r["default_point_value"],
-                currency=r["currency"]
+                currency=r["currency"],
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             )
         else:
             # Create default row
-            default_settings = PortfolioSettings()
-            save_portfolio_settings(default_settings, db_path)
+            default_settings = PortfolioSettings(workspace_id=workspace_id)
+            save_portfolio_settings(default_settings, db_path, workspace_id)
             return default_settings
     except Exception as e:
         logger.error(f"Error loading portfolio settings: {str(e)}")
-        return PortfolioSettings()
+        return PortfolioSettings(workspace_id=workspace_id)
     finally:
         conn.close()
 
-def save_portfolio_settings(settings: PortfolioSettings, db_path: str = None) -> bool:
+def save_portfolio_settings(settings: PortfolioSettings, db_path: str = None, workspace_id: str = None) -> bool:
     """
-    Saves portfolio settings to the database.
+    Saves portfolio settings to the database for the active workspace.
     """
+    if workspace_id is None:
+        workspace_id = getattr(settings, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -68,8 +79,8 @@ def save_portfolio_settings(settings: PortfolioSettings, db_path: str = None) ->
                     max_total_open_risk_pct, max_concurrent_trades, max_same_direction_trades,
                     max_correlated_positions, correlation_threshold, correlation_lookback_bars,
                     correlation_cache_ttl_seconds, default_contract_multiplier, default_point_value,
-                    currency, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    currency, updated_at, workspace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     settings.id,
@@ -86,7 +97,8 @@ def save_portfolio_settings(settings: PortfolioSettings, db_path: str = None) ->
                     settings.default_contract_multiplier,
                     settings.default_point_value,
                     settings.currency,
-                    now_utc
+                    now_utc,
+                    workspace_id
                 )
             )
         return True
@@ -96,14 +108,18 @@ def save_portfolio_settings(settings: PortfolioSettings, db_path: str = None) ->
     finally:
         conn.close()
 
-def load_symbol_profile(symbol: str, db_path: str = None) -> Optional[SymbolRiskProfile]:
+def load_symbol_profile(symbol: str, db_path: str = None, workspace_id: str = None) -> Optional[SymbolRiskProfile]:
     """
-    Loads symbol specific risk settings.
+    Loads symbol specific risk settings for the active workspace.
     """
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM portfolio_symbol_profiles WHERE symbol = ?", (symbol,))
+        cursor.execute("SELECT * FROM portfolio_symbol_profiles WHERE symbol = ? AND workspace_id = ?", (symbol, workspace_id))
         r = cursor.fetchone()
         if r:
             return SymbolRiskProfile(
@@ -114,7 +130,8 @@ def load_symbol_profile(symbol: str, db_path: str = None) -> Optional[SymbolRisk
                 min_position_size=r["min_position_size"],
                 position_step=r["position_step"],
                 currency=r["currency"],
-                updated_at=r["updated_at"]
+                updated_at=r["updated_at"],
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             )
         return None
     except Exception as e:
@@ -123,10 +140,16 @@ def load_symbol_profile(symbol: str, db_path: str = None) -> Optional[SymbolRisk
     finally:
         conn.close()
 
-def save_symbol_profile(profile: SymbolRiskProfile, db_path: str = None) -> bool:
+def save_symbol_profile(profile: SymbolRiskProfile, db_path: str = None, workspace_id: str = None) -> bool:
     """
-    Saves or overrides symbol risk profile.
+    Saves or overrides symbol risk profile for the active workspace.
     """
+    if workspace_id is None:
+        workspace_id = getattr(profile, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -135,8 +158,8 @@ def save_symbol_profile(profile: SymbolRiskProfile, db_path: str = None) -> bool
                 """
                 INSERT OR REPLACE INTO portfolio_symbol_profiles (
                     symbol, asset_class, point_value, contract_multiplier,
-                    min_position_size, position_step, currency, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    min_position_size, position_step, currency, updated_at, workspace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     profile.symbol,
@@ -146,7 +169,8 @@ def save_symbol_profile(profile: SymbolRiskProfile, db_path: str = None) -> bool
                     profile.min_position_size,
                     profile.position_step,
                     profile.currency,
-                    now_utc
+                    now_utc,
+                    workspace_id
                 )
             )
         return True
@@ -156,12 +180,16 @@ def save_symbol_profile(profile: SymbolRiskProfile, db_path: str = None) -> bool
     finally:
         conn.close()
 
-def load_all_symbol_profiles(db_path: str = None) -> List[SymbolRiskProfile]:
+def load_all_symbol_profiles(db_path: str = None, workspace_id: str = None) -> List[SymbolRiskProfile]:
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     profiles = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM portfolio_symbol_profiles ORDER BY symbol ASC")
+        cursor.execute("SELECT * FROM portfolio_symbol_profiles WHERE workspace_id = ? ORDER BY symbol ASC", (workspace_id,))
         rows = cursor.fetchall()
         for r in rows:
             profiles.append(SymbolRiskProfile(
@@ -172,7 +200,8 @@ def load_all_symbol_profiles(db_path: str = None) -> List[SymbolRiskProfile]:
                 min_position_size=r["min_position_size"],
                 position_step=r["position_step"],
                 currency=r["currency"],
-                updated_at=r["updated_at"]
+                updated_at=r["updated_at"],
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             ))
     except Exception as e:
         logger.error(f"Error loading all symbol profiles: {str(e)}")
@@ -180,7 +209,13 @@ def load_all_symbol_profiles(db_path: str = None) -> List[SymbolRiskProfile]:
         conn.close()
     return profiles
 
-def insert_portfolio_snapshot(snapshot: PortfolioSnapshot, db_path: str = None) -> bool:
+def insert_portfolio_snapshot(snapshot: PortfolioSnapshot, db_path: str = None, workspace_id: str = None) -> bool:
+    if workspace_id is None:
+        workspace_id = getattr(snapshot, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -190,8 +225,8 @@ def insert_portfolio_snapshot(snapshot: PortfolioSnapshot, db_path: str = None) 
                     snapshot_id, created_at, realized_daily_risk, open_risk,
                     open_risk_pct, potential_setup_risk, potential_setup_risk_pct,
                     active_trade_count, actionable_setup_count, risk_status,
-                    warnings_json, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    warnings_json, details_json, workspace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     snapshot.snapshot_id,
@@ -205,7 +240,8 @@ def insert_portfolio_snapshot(snapshot: PortfolioSnapshot, db_path: str = None) 
                     snapshot.actionable_setup_count,
                     snapshot.risk_status,
                     snapshot.warnings_json,
-                    snapshot.details_json
+                    snapshot.details_json,
+                    workspace_id
                 )
             )
         return True
@@ -215,7 +251,13 @@ def insert_portfolio_snapshot(snapshot: PortfolioSnapshot, db_path: str = None) 
     finally:
         conn.close()
 
-def insert_risk_event(event: PortfolioRiskEvent, db_path: str = None) -> bool:
+def insert_risk_event(event: PortfolioRiskEvent, db_path: str = None, workspace_id: str = None) -> bool:
+    if workspace_id is None:
+        workspace_id = getattr(event, "workspace_id", None)
+    if not workspace_id:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -223,8 +265,8 @@ def insert_risk_event(event: PortfolioRiskEvent, db_path: str = None) -> bool:
                 """
                 INSERT INTO portfolio_risk_events (
                     event_id, created_at, signal_id, trade_id, symbol,
-                    event_type, risk_status, reason, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    event_type, risk_status, reason, details_json, workspace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event.event_id,
@@ -235,7 +277,8 @@ def insert_risk_event(event: PortfolioRiskEvent, db_path: str = None) -> bool:
                     event.event_type,
                     event.risk_status,
                     event.reason,
-                    event.details_json
+                    event.details_json,
+                    workspace_id
                 )
             )
         return True
@@ -245,12 +288,16 @@ def insert_risk_event(event: PortfolioRiskEvent, db_path: str = None) -> bool:
     finally:
         conn.close()
 
-def load_risk_events(limit: int = 50, offset: int = 0, db_path: str = None) -> List[PortfolioRiskEvent]:
+def load_risk_events(limit: int = 50, offset: int = 0, db_path: str = None, workspace_id: str = None) -> List[PortfolioRiskEvent]:
+    if workspace_id is None:
+        from tradenexus.workspace.workspace_context import get_active_workspace_id
+        workspace_id = get_active_workspace_id()
+
     conn = get_db_connection(db_path)
     events = []
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM portfolio_risk_events ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))
+        cursor.execute("SELECT * FROM portfolio_risk_events WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", (workspace_id, limit, offset))
         rows = cursor.fetchall()
         for r in rows:
             events.append(PortfolioRiskEvent(
@@ -262,7 +309,8 @@ def load_risk_events(limit: int = 50, offset: int = 0, db_path: str = None) -> L
                 event_type=r["event_type"],
                 risk_status=r["risk_status"],
                 reason=r["reason"],
-                details_json=r["details_json"]
+                details_json=r["details_json"],
+                workspace_id=r["workspace_id"] if "workspace_id" in r.keys() else "default_workspace"
             ))
     except Exception as e:
         logger.error(f"Error loading risk events: {str(e)}")

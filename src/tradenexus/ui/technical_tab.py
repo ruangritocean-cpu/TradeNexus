@@ -152,6 +152,34 @@ def render_technical_tab(ticker: str, tf_dfs: dict, tf_warnings: dict):
     # Render premium Decision Card
     render_trading_strategy_panel(strategy)
     
+    # Render Playbook Enforcer status below Decision Card
+    try:
+        from tradenexus.playbook.playbook_repository import get_active_playbook
+        from tradenexus.playbook.rule_engine import evaluate_playbook_rules
+        from tradenexus.playbook.playbook_explain import generate_playbook_summary
+        
+        playbook = get_active_playbook()
+        pb_status, pb_passed, pb_warnings, pb_violations = evaluate_playbook_rules(
+            playbook=playbook,
+            symbol=ticker,
+            timeframe=selected_tf,
+            setup_type=alignment_type,
+            confluence_score=confluence_score,
+            rr=risk_result["RR_TP1"],
+            market_regime=primary_regime
+        )
+        
+        pb_summary = generate_playbook_summary(pb_status, pb_passed, pb_warnings, pb_violations)
+        with st.expander(f"🛡️ Playbook Enforcement Status: {pb_status}", expanded=(pb_status != "PASS")):
+            if pb_status == "PASS":
+                st.success(pb_summary)
+            elif pb_status == "WARNING":
+                st.warning(pb_summary)
+            else:
+                st.error(pb_summary)
+    except Exception as pb_err:
+        logger.warning(f"Playbook evaluation failed in UI: {pb_err}")
+    
     # Render deterministic Decision Brief explanation panel
     brief_data = {
         "symbol": ticker,
@@ -219,14 +247,26 @@ def render_technical_tab(ticker: str, tf_dfs: dict, tf_warnings: dict):
     with col_opt3:
         show_eql_eqh = st.checkbox("Show Equal Highs/Lows Zones", value=True)
         
-    draw_advanced_charts(
-        df=df_to_plot,
-        ticker=ticker,
-        tf=selected_tf,
-        show_regime=show_regime,
-        show_bos_choch=show_bos_choch,
-        show_eql_eqh=show_eql_eqh
-    )
+    try:
+        draw_advanced_charts(
+            df=df_to_plot,
+            ticker=ticker,
+            timeframe=selected_tf,
+            strategy=strategy,
+            show_vwap=True,
+            show_fvg=True,
+            show_ob=True,
+            show_sweeps=True,
+            show_bos_choch=show_bos_choch,
+            show_eql_eqh=show_eql_eqh,
+            show_market_regime_shading=show_regime
+        )
+    except TypeError as exc:
+        st.error("Advanced chart rendering failed because chart overlay arguments do not match.")
+        st.exception(exc)
+    except Exception as exc:
+        st.error("Advanced chart rendering failed. Decision Card and indicators are still available.")
+        st.exception(exc)
     
     # Data Explorer expander
     with st.expander("📄 Data Explorer"):

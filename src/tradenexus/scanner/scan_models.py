@@ -14,6 +14,7 @@ class WatchlistItem:
     alert_ready_enabled: bool = False
     alert_entry_enabled: bool = True
     notes: str = ""
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class ScanRun:
@@ -27,6 +28,7 @@ class ScanRun:
     error_count: int
     skipped_count: int
     config_json: str
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class ScanResult:
@@ -54,3 +56,10 @@ class ScanResult:
     position_size_units: float = 0.0
     candidate_risk_amount: float = 0.0
     candidate_risk_pct: float = 0.0
+    provider_used: Optional[str] = "unknown"
+    fallback_used: int = 0
+    data_quality_warnings_json: str = "[]"
+    data_quality_errors_json: str = "[]"
+    latest_candle_time: Optional[str] = None
+    bars_available: int = 0
+    workspace_id: str = "default_workspace"

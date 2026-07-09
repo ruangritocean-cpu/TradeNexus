@@ -7,15 +7,27 @@ from plotly.subplots import make_subplots
 def draw_advanced_charts(
     df: pd.DataFrame, 
     ticker: str, 
-    timeframe: str, 
+    timeframe: str = None, 
     strategy: dict = None,
     show_vwap: bool = False,
     show_fvg: bool = False,
     show_ob: bool = False,
     show_sweeps: bool = False,
     show_bos_choch: bool = False,
-    show_eql_eqh: bool = False
+    show_eql_eqh: bool = False,
+    show_market_regime_shading: bool = False,
+    show_equal_highs_lows: bool = None,
+    show_regime: bool = None,
+    tf: str = None
 ):
+    if not timeframe and tf:
+        timeframe = tf
+        
+    if show_equal_highs_lows is not None:
+        show_eql_eqh = show_equal_highs_lows
+        
+    if show_regime is not None:
+        show_market_regime_shading = show_regime
     """
     Draws a Plotly figure with 4 subplots:
     1. Candlestick chart + EMAs + KAMA + Confirmed SMC Support/Resistance levels + Bollinger Bands + optional overlays
@@ -162,25 +174,27 @@ def draw_advanced_charts(
                 )
         
     # Historical Swing Point Markers
-    swing_highs = plot_df[plot_df["Swing_High"].notna()]
-    if not swing_highs.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=swing_highs.index, y=swing_highs["Swing_High"],
-                mode="markers",
-                marker=dict(symbol="triangle-down", size=8, color="#EF4444"),
-                name="Swing High Peak"
-            ),
-            row=1, col=1
-        )
+    if "Swing_High" in plot_df.columns:
+        swing_highs = plot_df[plot_df["Swing_High"].notna()]
+        if not swing_highs.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=swing_highs.index, y=swing_highs["Swing_High"],
+                    mode="markers",
+                    marker=dict(symbol="triangle-down", size=8, color="#EF4444"),
+                    name="Swing High Peak"
+                ),
+                row=1, col=1
+            )
         
-    swing_lows = plot_df[plot_df["Swing_Low"].notna()]
-    if not swing_lows.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=swing_lows.index, y=swing_lows["Swing_Low"],
-                mode="markers",
-                marker=dict(symbol="triangle-up", size=8, color="#10B981"),
+    if "Swing_Low" in plot_df.columns:
+        swing_lows = plot_df[plot_df["Swing_Low"].notna()]
+        if not swing_lows.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=swing_lows.index, y=swing_lows["Swing_Low"],
+                    mode="markers",
+                    marker=dict(symbol="triangle-up", size=8, color="#10B981"),
                 name="Swing Low Valley"
             ),
             row=1, col=1
@@ -265,6 +279,40 @@ def draw_advanced_charts(
     # Generate background rectangle shapes for FVG and OB candidates
     shapes = []
     indices = plot_df.index
+    
+    if show_market_regime_shading and "primary_regime" in plot_df.columns:
+        regimes = plot_df["primary_regime"].values
+        n = len(plot_df)
+        i = 0
+        min_y = plot_df["Low"].min() * 0.999
+        max_y = plot_df["High"].max() * 1.001
+        while i < n:
+            reg = regimes[i]
+            start_time = indices[i]
+            j = i
+            while j < n and regimes[j] == reg:
+                j += 1
+            end_time = indices[j - 1]
+            
+            if reg == "TRENDING_UP":
+                color = "rgba(16, 185, 129, 0.03)"
+            elif reg == "TRENDING_DOWN":
+                color = "rgba(239, 68, 68, 0.03)"
+            elif reg == "SIDEWAYS":
+                color = "rgba(156, 163, 175, 0.03)"
+            else:
+                color = "rgba(245, 158, 11, 0.03)"
+                
+            shapes.append(dict(
+                type="rect",
+                xref="x", yref="y",
+                x0=start_time, x1=end_time,
+                y0=min_y, y1=max_y,
+                fillcolor=color,
+                line=dict(width=0),
+                layer="below"
+            ))
+            i = j
     
     if show_fvg and "FVG_Present" in plot_df.columns:
         for i in range(len(plot_df)):

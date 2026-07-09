@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import logging
+import os
 
 # Data provider & resampling
 from tradenexus.data.providers import fetch_ohlcv_data
@@ -18,14 +19,68 @@ from tradenexus.ui.strategy_lab_tab import render_strategy_lab_tab
 from tradenexus.ui.watchlist_scanner_ui import render_watchlist_scanner_tab
 from tradenexus.ui.portfolio_ui import render_portfolio_ui
 from tradenexus.ui.diagnostics_ui import render_diagnostics_ui
+from tradenexus.ui.playbook_tab import render_playbook_tab
+from tradenexus.ui.compliance_ui import render_compliance_report_tab
+from tradenexus.ui.presets_ui import render_presets_ui
 from tradenexus.journal.db import init_db
 from tradenexus.scanner.watchlist import load_watchlist
 
 logger = logging.getLogger(__name__)
 
+def run_startup_diagnostics() -> list:
+    warnings = []
+    
+    # 1. Writable data directory
+    db_dir = "data"
+    if os.path.exists(db_dir):
+        if not os.access(db_dir, os.W_OK):
+            warnings.append("⚠️ Data directory is not writable. Database entries cannot be updated.")
+    else:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception as e:
+            warnings.append(f"⚠️ Failed to create writable data directory: {str(e)}")
+            
+    # 2. SQLite path and migration success
+    from tradenexus.journal.db import get_db_connection
+    try:
+        conn = get_db_connection()
+        conn.close()
+    except Exception as e:
+        warnings.append(f"⚠️ SQLite database path unavailable: {str(e)}")
+        
+    # 3. Provider registry empty
+    from tradenexus.data.provider_registry import list_registered_providers
+    try:
+        providers = list_registered_providers()
+        if not providers:
+            warnings.append("⚠️ Provider registry is empty. No price data feeds will be active.")
+    except Exception as e:
+        warnings.append(f"⚠️ Failed to verify registered data providers: {str(e)}")
+        
+    # 4. Alert config check
+    discord_webhook = os.getenv("DISCORD_WEBHOOK_URL", "")
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    tg_chat = os.getenv("TELEGRAM_CHAT_ID", "")
+    
+    if not discord_webhook and (not tg_token or not tg_chat):
+        warnings.append("ℹ️ Optional Telegram or Discord alert integrations are not configured. Notifications will be disabled.")
+        
+    return warnings
+
 def run_dashboard():
+    # Run startup diagnostics
+    startup_warns = run_startup_diagnostics()
+    if startup_warns:
+        with st.sidebar.expander("⚠️ System Startup Warnings", expanded=True):
+            for w in startup_warns:
+                st.write(w)
+
     # Initialize SQLite Journal Database automatically
-    init_db()
+    try:
+        init_db()
+    except Exception as ex:
+        st.sidebar.error(f"❌ Database initialization / migration failed: {str(ex)}")
 
     # Initialize Streamlit session state for alerts and trades
     initialize_trade_state()
@@ -62,11 +117,58 @@ def run_dashboard():
     st.markdown('<h1 class="main-title">TradeNexus Pro</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-title">Advanced Multi-Timeframe Trading Strategy & Decision Support System</p>', unsafe_allow_html=True)
 
+    # ----------------- SIDEBAR WORKSPACE SWITCHER -----------------
+    st.sidebar.markdown("## 💼 Active Workspace / พื้นที่ทำงาน")
+    from tradenexus.workspace.workspace_repository import load_workspaces, create_workspace
+    from tradenexus.workspace.workspace_context import get_active_workspace_id, set_active_workspace_id
+    
+    # Load all workspaces
+    workspaces = load_workspaces()
+    ws_options = {ws.workspace_name: ws.workspace_id for ws in workspaces}
+    
+    # Add option to create a new workspace
+    new_ws_label = "➕ Create New Workspace..."
+    options_list = list(ws_options.keys()) + [new_ws_label]
+    
+    # Get current index
+    active_ws_id = get_active_workspace_id()
+    default_idx = 0
+    for idx, (label, ws_id) in enumerate(ws_options.items()):
+        if ws_id == active_ws_id:
+            default_idx = idx
+            break
+            
+    selected_label = st.sidebar.selectbox("Select Active Workspace", options_list, index=default_idx)
+    
+    if selected_label == new_ws_label:
+        # Show mini form to create new workspace
+        with st.sidebar.form("new_workspace_form"):
+            new_ws_name = st.text_input("Workspace Name", placeholder="e.g. Crypto Trading")
+            new_ws_notes = st.text_area("Notes (Optional)", placeholder="Describe this workspace...")
+            submitted = st.form_submit_button("Create")
+            if submitted and new_ws_name.strip():
+                import re
+                clean_id = re.sub(r'[^a-zA-Z0-9_]', '_', new_ws_name.lower().strip())
+                if create_workspace(clean_id, new_ws_name.strip(), notes=new_ws_notes.strip()):
+                    set_active_workspace_id(clean_id)
+                    st.success(f"Workspace '{new_ws_name}' created!")
+                    st.rerun()
+                else:
+                    st.error("Workspace ID already exists or failed to create.")
+    else:
+        new_ws_id = ws_options[selected_label]
+        if new_ws_id != active_ws_id:
+            set_active_workspace_id(new_ws_id)
+            st.success(f"Switched to workspace: {selected_label}")
+            st.rerun()
+            
+    st.sidebar.markdown("---")
+
     # ----------------- SIDEBAR PAGE NAVIGATION -----------------
     st.sidebar.markdown("## 🧭 Navigation / เมนูหลัก")
     page = st.sidebar.radio(
         "Select Page / เลือกหน้าจอ",
-        ["📈 Technical Analysis", "🔬 Strategy Lab", "🔍 Watchlist Scanner", "🛡️ Portfolio Risk", "🧪 Diagnostics"]
+        ["📈 Technical Analysis", "🔬 Strategy Lab", "🔍 Watchlist Scanner", "🛡️ Portfolio Risk", "🛡️ Trading Playbook", "📊 Compliance Report", "📚 Strategy Presets", "🧪 Diagnostics"]
     )
 
     st.sidebar.markdown("---")
@@ -251,5 +353,11 @@ def run_dashboard():
         render_watchlist_scanner_tab()
     elif page == "🛡️ Portfolio Risk":
         render_portfolio_ui()
+    elif page == "🛡️ Trading Playbook":
+        render_playbook_tab()
+    elif page == "📊 Compliance Report":
+        render_compliance_report_tab()
+    elif page == "📚 Strategy Presets":
+        render_presets_ui()
     elif page == "🧪 Diagnostics":
         render_diagnostics_ui()

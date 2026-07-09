@@ -1,20 +1,32 @@
+# Exclude local package virtual environment
 .venv/
 venv/
 env/
+
+# Exclude git repository data
+.git/
+.github/
+
+# Exclude local databases and data caches
+data/*.sqlite
+data/*.db
+data/cache/
+
+# Exclude test caches and coverage reports
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Exclude temporary scratch scripts and logs
+scratch/
+*.log
+
+# Exclude Python build/compile outputs
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache/
-.coverage
-htmlcov/
-.git/
-.github/
-.gitignore
-data/*.sqlite
-*.db
-*.sqlite
-scratch/
-invalid_dir/
-invalid_path/
-C:/Users/Acer/.gemini/antigravity/
+
+# Exclude OS generated files
+.DS_Store
+Thumbs.db

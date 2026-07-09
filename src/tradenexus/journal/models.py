@@ -45,6 +45,7 @@ class Signal:
     choch_present: int = 0
     fvg_present: int = 0
     liquidity_sweep_present: int = 0
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class AlertLog:
@@ -54,6 +55,7 @@ class AlertLog:
     status: str
     sent_at: str
     error_message: Optional[str] = None
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class Trade:
@@ -69,3 +71,4 @@ class Trade:
     opened_at: str
     closed_at: Optional[str] = None
     realized_r_multiple: float = 0.0
+    workspace_id: str = "default_workspace"

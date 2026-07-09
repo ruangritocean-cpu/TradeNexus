@@ -2,17 +2,21 @@
 
 TradeNexus Pro is an advanced multi-indicator trading dashboard that fetches market data, performs multi-timeframe calculations, and displays real-time quantitative trading signals. Built using Streamlit, pandas, and plotly.
 
+---
+
 ## 🚀 Features
 
-- **Data Fetching Engine**: Connects to the Yahoo Finance API (`yfinance`) to retrieve high-resolution base candlestick data.
+- **Multi-Provider Data Layer**: Supports modular data providers (e.g., `yfinance` and fallbacks) with automatic retry and health logs.
+- **Data Quality Assessor**: Inspects warmup bar depth and detects stale prices with active crypto vs equities weekend rules.
 - **Multiple Timeframe (MTF) Engine**: Resamples base interval data dynamically (e.g. `15m`) to produce higher-timeframe data (`1h`, `4h`, `1d`) with correct OHLCV aggregation.
 - **Traders Trend Dashboard (TTD)**: A consolidated multi-timeframe summary table displaying CDC ActionZone trend/signal states and MACD crossovers simultaneously across 15m, 1h, 4h, and 1D.
 - **Integrated Technical Indicators**:
   - **CDC ActionZone (Simplified)**: Fast EMA 12 / Slow EMA 26 trend identification and crossover signal detection.
-  - **MACD (MTF)**: Projecting MACD (12, 26, 9) calculations across multiple resampled timeframes.
+  - **MACD (MTF)**: Projecting MACD (12, 26, 9) calculations across resampled timeframes.
   - **Smart Money Concepts (SMC Lite)**: Swing highs/lows extraction via a 20-period rolling window to dynamically highlight Support and Resistance zones.
-  - **MCDX (Proxy & Classic)**: Custom momentum strength oscillator (`RSI(14) * ATR(14)`) and institutional/hot/retail money flow area chart.
-  - **Adaptive Trend Finder**: Kaufman's Adaptive Moving Average (KAMA) and SuperTrend direction filters.
+  - **MCDX (Proxy & Classic)**: Custom momentum strength oscillator (`RSI(14) * ATR(14)`) and institutional money flow.
+- **Trading Playbook & Rule Enforcer**: Governs tradability based on session hours (Asia, London, NY) and discipline cooldown metrics without mutating technical signals.
+- **Portfolio Risk Command Center**: Checks exposure correlation and calculates position size.
 
 ---
 
@@ -23,18 +27,24 @@ TradeNexus Pro is an advanced multi-indicator trading dashboard that fetches mar
    cd d:\TradeNexus
    ```
 
-2. **Create a Virtual Environment** (Recommended):
+2. **Create a Virtual Environment**:
    ```bash
-   python -m venv venv
+   python -m venv .venv
    # On Windows:
-   .\venv\Scripts\activate
+   .\.venv\Scripts\activate
    # On macOS/Linux:
-   source venv/bin/activate
+   source .venv/bin/activate
    ```
 
 3. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
+   ```
+
+4. **Environment Variables Config**:
+   Copy `.env.example` to `.env` and fill in credentials:
+   ```bash
+   cp .env.example .env
    ```
 
 ---
@@ -46,21 +56,34 @@ Launch the Streamlit web application:
 streamlit run app.py
 ```
 
-Open the local address printed by Streamlit in your web browser (usually `http://localhost:8501`).
+Open the web address in your browser (usually `http://localhost:8501`).
 
 ---
 
-## ⚙️ Project File Structure
+## 🐳 Docker Deployment
 
-- `app.py`: Streamlit application entry point launcher.
-- `src/tradenexus/`: Clean, modular Python package.
-  - `data/`: Data cache layer (`cache.py`) and Yahoo Finance provider (`providers.py`).
-  - `pipeline/`: Unified shared pipelines (`market_pipeline.py`, `indicator_pipeline.py`, `decision_pipeline.py`).
-  - `indicators/`: Technical indicators (ActionZone, KAMA, MACD, SMC Lite, MCDX, Volume, Structures, Liquidity).
-  - `signals/`: Decision state, rules, scoring, and risk check vetoes.
-  - `portfolio/`: Exposure tracking, limits rules, and position sizing.
-  - `journal/`: SQLite schema initialization (`db.py`) and repository queries (`repository.py`).
-  - `explain/`: Explainability briefs builder (`decision_brief.py`) and invalidation templates.
-  - `ui/`: Lazy-rendering page tabs (`technical_tab.py`, `strategy_lab_tab.py`, `diagnostics_ui.py`, etc.) and plotly charts (`charts.py`).
-- `tests/`: 66 unit tests checking logic correctness and preventing look-ahead bias.
-- `requirements.txt`: Python package dependency list.
+To deploy TradeNexus DSS inside a local containerized environment:
+
+1. **Start the containerized service**:
+   ```bash
+   docker compose up --build -d
+   ```
+2. **Access application**:
+   Navigate to `http://localhost:8501` in your browser.
+3. **Database logs persistence**:
+   SQLite database records are safely stored inside the docker named volume `tradenexus-data`.
+
+---
+
+## 🧪 Pre-Release Compliance Check
+
+Before committing or releasing new changes, run the automated compliance checker script:
+```bash
+python scripts/release_check.py
+```
+This script validates that:
+- Required deployment files exist.
+- No forbidden files (`.venv`, database `.sqlite` files) are present in packaging targets.
+- No hardcoded secrets (API tokens, webhooks) exist in Python source files.
+- UI Entrypoints compile and import cleanly.
+- The unit test suite passes cleanly.

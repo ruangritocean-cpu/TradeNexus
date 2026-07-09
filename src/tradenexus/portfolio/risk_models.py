@@ -18,6 +18,7 @@ class PortfolioSettings:
     default_point_value: float = 1.0
     currency: str = "USD"
     notes: str = ""
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class SymbolRiskProfile:
@@ -29,6 +30,7 @@ class SymbolRiskProfile:
     position_step: float = 0.01
     currency: str = "USD"
     updated_at: str = ""
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class PositionSizeResult:
@@ -85,6 +87,7 @@ class PortfolioSnapshot:
     risk_status: str
     warnings_json: str
     details_json: str
+    workspace_id: str = "default_workspace"
 
 @dataclass
 class PortfolioRiskEvent:
@@ -97,3 +100,4 @@ class PortfolioRiskEvent:
     risk_status: str
     reason: str
     details_json: str
+    workspace_id: str = "default_workspace"
