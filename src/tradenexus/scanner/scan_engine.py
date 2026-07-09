@@ -128,16 +128,18 @@ def run_watchlist_scan(
                     df_tf = calculate_smc_structures(df_tf)
                     df_tf = calculate_liquidity_zones(df_tf)
                     
-                    # Rolling regime classifier
-                    primary_regimes = []
-                    regime_scores = []
-                    regime_flags_list = []
-                    for idx in range(len(df_tf)):
+                    # Rolling regime classifier - optimized for last 5 rows
+                    primary_regimes = ["UNKNOWN"] * len(df_tf)
+                    regime_scores = [0.0] * len(df_tf)
+                    regime_flags_list = [""] * len(df_tf)
+                    
+                    start_idx = max(0, len(df_tf) - 5)
+                    for idx in range(start_idx, len(df_tf)):
                         sub_df = df_tf.iloc[:idx+1]
                         reg_res = classify_market_regime(sub_df)
-                        primary_regimes.append(reg_res["primary_regime"])
-                        regime_scores.append(reg_res["regime_score"])
-                        regime_flags_list.append(",".join(reg_res["flags"]))
+                        primary_regimes[idx] = reg_res["primary_regime"]
+                        regime_scores[idx] = reg_res["regime_score"]
+                        regime_flags_list[idx] = ",".join(reg_res["flags"])
                         
                     df_tf["primary_regime"] = primary_regimes
                     df_tf["regime_score"] = regime_scores
