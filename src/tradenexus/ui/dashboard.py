@@ -12,7 +12,7 @@ from tradenexus.data.resampling import resample_timeframe
 from tradenexus.pipeline.indicator_pipeline import calculate_all_indicators
 
 # UI components
-from tradenexus.ui.components import initialize_trade_state
+from tradenexus.signals.state import initialize_trade_state
 from tradenexus.ui.technical_tab import render_technical_tab
 from tradenexus.ui.strategy_lab_tab import render_strategy_lab_tab
 from tradenexus.ui.watchlist_scanner_ui import render_watchlist_scanner_tab
