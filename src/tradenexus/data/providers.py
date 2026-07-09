@@ -20,11 +20,11 @@ def fetch_ohlcv_data(ticker: str, interval: str = "15m", period: str = None) -> 
     Returns:
         tuple[pd.DataFrame, str]: (Cleaned OHLCV DataFrame, Quality warning message if any)
     """
-    # Map interval to maximum allowed or appropriate periods
+    # Map interval to appropriate periods that ensure fast load while keeping enough warmup history
     interval_period_map = {
-        "15m": "60d",
-        "1h": "730d",
-        "1d": "5y",  # Fetch 5 years of daily data for robust history
+        "15m": "14d",
+        "1h": "60d",
+        "1d": "365d",
     }
     
     if not period:
